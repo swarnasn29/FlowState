@@ -90,9 +90,24 @@ wait_for_port "$PORT_GOOD"
 wait_for_port "$PORT_WEAK"
 echo "=== both miners accepting connections ==="
 
-ARGS=(--once --organic --challenges "$CHALLENGES"
-      --miner "miner=http://127.0.0.1:$PORT_GOOD"
-      --miner "miner_naive=http://127.0.0.1:$PORT_WEAK")
+ARGS=(--once --organic --challenges "$CHALLENGES")
+
+if [[ -n "${DISCOVER:-}" ]]; then
+  # Find both miners by reading the metagraph instead of being told where they
+  # are. Their axons are already published on chain, so nothing is republished
+  # here - the chain's serving rate limit makes re-publishing on every run a
+  # bad idea, and it is unnecessary when the addresses have not changed.
+  #
+  # Requires the ports below to match what is published, and the published IP
+  # to still be this host's. WSL's IP changes across reboots, so if discovery
+  # finds nothing, re-publish:
+  #   btcli tx serve-axon --netuid 600 --network test --wallet flowstate \
+  #     --wallet-hotkey miner --ip $(hostname -I | awk '{print $1}') --port 8091
+  echo "    (discovering miners from the metagraph)"
+else
+  ARGS+=(--miner "miner=http://127.0.0.1:$PORT_GOOD"
+         --miner "miner_naive=http://127.0.0.1:$PORT_WEAK")
+fi
 
 if [[ -n "${SET_WEIGHTS:-}" ]]; then
   ARGS+=(--set-weights)

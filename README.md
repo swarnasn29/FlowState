@@ -221,17 +221,39 @@ an argument for scoring over a long window rather than a single round.
 | | |
 |---|---|
 | Network | `test.finney` |
-| Subnet | **netuid 600**, owned by coldkey `flowstate` |
+| Subnet | **netuid 600**, published on chain as **FlowState** |
+| Owner | coldkey `flowstate` |
 | Validator | hotkey `validator`, **uid 0**, `validator_permit: true` |
 | Miner (per-step profile) | hotkey `miner`, **uid 1** |
 | Miner (naive, for comparison) | hotkey `miner_naive`, **uid 2** |
 | Status | Activated (`start_call`), tempo 360 |
 
-Verified end-to-end: the miner published its axon with `ServeAxon`, the
-validator discovered it **by reading the metagraph** (not a hardcoded URL), ran
-signed challenges, and committed weights on chain —
-extrinsic `8325875-0007`, event `TimelockedWeightsCommitted`. Subnet 600 has
-commit-reveal enabled, so `SetWeights` takes the timelock path automatically.
+Both miners publish their endpoints with `ServeAxon`, and the validator finds
+them **by reading the metagraph** — nothing is hardcoded:
+
+```
+INFO flowstate.validator  discovered 2 miner(s) with published endpoints
+INFO flowstate.validator  scored round 1 complete (400 challenges)
+```
+
+Scores are then committed on chain — extrinsic `8326307-0007`, event
+`TimelockedWeightsCommitted`. Subnet 600 has commit-reveal enabled, so
+`SetWeights` takes the timelock path automatically and the chain reveals at a
+later drand round.
+
+The subnet's on-chain identity is published too (`8326573-0006`), so
+`btcli subnet show 600` reports it as **FlowState** with this repo's URL rather
+than as an anonymous netuid.
+
+Two operational constraints worth knowing before a live run:
+
+- **Weights are rate limited to one commit per 100 blocks (~20 min)** per
+  validator. A second attempt inside that window fails with the chain's own
+  message saying how many blocks remain.
+- **Published axons hold an IP, and WSL's IP changes across reboots.** After a
+  restart the addresses on chain are stale and discovery finds miners that
+  are not there. Re-publish with `btcli tx serve-axon` before relying on
+  discovery.
 
 **Cost of the whole thing:**
 
@@ -303,8 +325,10 @@ Windows outright.
 source ~/venvs/flowstate/bin/activate
 cd /mnt/c/Users/swarn/Documents/FlowStateProject
 
+bash scripts/healthcheck.sh                # 8 pre-flight checks, run this first
 bash scripts/demo_local.sh                 # localhost, no chain spend
 bash scripts/demo_compare.sh               # two miners ranked, no chain spend
+DISCOVER=1 bash scripts/demo_compare.sh    # ...found via the metagraph
 SET_WEIGHTS=1 bash scripts/demo_compare.sh # ...and commit the split on chain
 PUBLISH_IP=$(hostname -I | awk '{print $1}') \
   bash scripts/demo_chain.sh               # full on-chain loop, one miner

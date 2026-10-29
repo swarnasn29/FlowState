@@ -249,11 +249,30 @@ Two operational constraints worth knowing before a live run:
 
 - **Weights are rate limited to one commit per 100 blocks (~20 min)** per
   validator. A second attempt inside that window fails with the chain's own
-  message saying how many blocks remain.
+  message saying how many blocks remain — so a rehearsal that commits weights
+  can make the real run fail minutes later.
 - **Published axons hold an IP, and WSL's IP changes across reboots.** After a
-  restart the addresses on chain are stale and discovery finds miners that
-  are not there. Re-publish with `btcli tx serve-axon` before relying on
-  discovery.
+  restart the addresses on chain are stale and discovery follows them to a host
+  that no longer exists. Re-publish with `btcli tx serve-axon`.
+
+`python -m scripts.preflight` checks both, plus whether the miners are actually
+listening, and asks the chain to validate a real `SetWeights` without
+submitting it:
+
+```
+ validator
+  [ok  ] validator permit       yes
+  [ok  ] weights settable       yes - last set 316 blocks ago, limit 100
+  [ok  ] SetWeights preflight   accepted (not submitted)
+ miners
+  [ok  ] uid 1                  axon 172.26.78.118:8091 - reachable
+  [ok  ] uid 2                  axon 172.26.78.118:8092 - reachable
+  VERDICT: ready
+```
+
+It distinguishes the two failure modes that look identical from the outside: an
+axon whose IP no longer belongs to this host (stale, re-publish) from one whose
+IP is right but has nothing listening (miner not started).
 
 **Cost of the whole thing:**
 
@@ -325,7 +344,9 @@ Windows outright.
 source ~/venvs/flowstate/bin/activate
 cd /mnt/c/Users/swarn/Documents/FlowStateProject
 
-bash scripts/healthcheck.sh                # 8 pre-flight checks, run this first
+bash scripts/healthcheck.sh                # 8 code checks - is the code sound?
+python -m scripts.preflight                # chain checks - will a run work NOW?
+python -m scripts.preflight --require-miners   # ...strict: miners must be up
 bash scripts/demo_local.sh                 # localhost, no chain spend
 bash scripts/demo_compare.sh               # two miners ranked, no chain spend
 DISCOVER=1 bash scripts/demo_compare.sh    # ...found via the metagraph

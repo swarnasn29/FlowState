@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Bittensor — never commit wallets or keys
+wallets/
+*.mnemonic
+.bittensor/
+
+# Local artifacts
+*.log
+out/
+.env

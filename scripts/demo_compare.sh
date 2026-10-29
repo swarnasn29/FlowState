@@ -23,9 +23,28 @@ set -euo pipefail
 PROJECT=/mnt/c/Users/swarn/Documents/FlowStateProject
 PORT_GOOD="${PORT_GOOD:-8091}"
 PORT_WEAK="${PORT_WEAK:-8092}"
-# Enough rounds that both miners pass the profiled detector's 30-session
-# warm-up, or the comparison just measures who starts faster.
+# Enough challenges that the profiled detector is past its warm-up, or the
+# comparison measures who starts faster rather than who is better.
+#
+# Measured crossover: at 40 challenges the naive miner wins 80.0% to 62.5%,
+# at 100 it still wins 88.0% to 83.0%, and only by 200 does the profiled
+# detector lead (89.0% to 84.5%). 400 leaves a comfortable margin.
 CHALLENGES="${CHALLENGES:-400}"
+MIN_CHALLENGES="${MIN_CHALLENGES:-200}"
+
+if (( CHALLENGES < MIN_CHALLENGES )); then
+  cat >&2 <<MSG
+refusing to run a comparison with only $CHALLENGES challenges.
+
+The per-step detector needs about 200 challenges to overtake the naive one -
+below that it is still learning each step's norms and will lose, making the
+better miner look worse. That is a misleading demo, not a fast one.
+
+Use at least $MIN_CHALLENGES, or set MIN_CHALLENGES=$CHALLENGES to override
+deliberately (for instance to show the warm-up itself).
+MSG
+  exit 1
+fi
 
 # shellcheck disable=SC1091
 source "$HOME/venvs/flowstate/bin/activate"

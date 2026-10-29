@@ -192,6 +192,28 @@ because a linear curve is a broken incentive: a miner doing materially better
 work would earn 4% more and nobody would bother. Both are tunable via
 `--score-floor` and `--score-power`.
 
+### Warm-up: the comparison inverts if the round is too short
+
+A learning miner is worse than a hardcoded one until it has learned. Streaming
+challenges the way a live round does:
+
+| Challenges served | Per-step profile | Naive global | Leader |
+|---|---|---|---|
+| 40 | 62.5% | 80.0% | **naive** |
+| 100 | 83.0% | 88.0% | **naive** |
+| 200 | 89.0% | 84.5% | profile |
+| 400 | 93.5% | 87.8% | profile |
+| 1200 | 95.0% | 87.8% | profile |
+
+Below roughly 200 challenges the better miner **loses**, because it is still
+estimating each step's norms while the naive miner's fixed thresholds work from
+the first request. `scripts/demo_compare.sh` therefore refuses to run with
+fewer than 200 challenges rather than produce a backwards result.
+
+This is a real property of the design, not a bug to hide: a subnet that rewards
+learned behaviour has to tolerate new miners being temporarily bad, and that is
+an argument for scoring over a long window rather than a single round.
+
 ---
 
 ## 5. On chain

@@ -13,9 +13,14 @@ Miners cannot distinguish the two on the wire, which is what stops a miner
 working hard only when it is being marked.
 
 Run a single scored round against a local miner:
-    python -m neurons.validator --once --miner-url http://127.0.0.1:8091
+    python -m neurons.validator --once --miner miner=http://127.0.0.1:8091
 
-Run continuously and write weights to chain:
+Run two miners and compare them:
+    python -m neurons.validator --once \
+        --miner miner=http://127.0.0.1:8091 \
+        --miner miner_naive=http://127.0.0.1:8092
+
+Discover miners from the metagraph and write weights to chain:
     python -m neurons.validator --set-weights
 """
 
@@ -49,10 +54,10 @@ log = logging.getLogger("flowstate.validator")
 # stops working loses its weight within a few rounds.
 SCORE_EMA_ALPHA = 0.2
 
-# Accuracy a miner must beat before it earns anything. Set just under the
-# trivial baselines: answering "the slowest step" scores about 74% and
-# "the first non-ok ui_state" about 55%, so anything at or below this floor is
-# reachable with no real analysis and should not be paid.
+# Accuracy a miner must beat before it earns anything. Set above every
+# zero-effort strategy measured in flowstate.detect: a cold miner with no
+# history scores 62.0%, "the first non-ok ui_state" 55.8% and "the slowest
+# step" 52.3%. None of them should be paid.
 SCORE_FLOOR = 0.70
 
 # Convexity of the incentive curve. Weight is (accuracy - floor) ** power.

@@ -54,38 +54,57 @@ chosen to sit *below* the ~1-in-8 contamination rate rather than inside it.
 
 Measured over 2,000 unseen sessions after 2,000 calibration sessions:
 
-| Miner | Accuracy |
+| Strategy | Accuracy |
 |---|---|
-| Calibrated (learns per-step norms) | **97.7%** |
-| Cold, same code, no history | **74.1%** |
-| Cheat: "slowest step" | 73.7% |
-| Cheat: "first non-ok ui_state" | 54.9% |
+| Per-step profile, calibrated | **97.0%** |
+| Naive global thresholds | 89.5% |
+| Per-step profile, cold (no history) | 62.0% |
+| Cheat: "first non-ok ui_state" | 55.8% |
+| Cheat: "the slowest step" | 52.3% |
 | Random floor | 12.5% |
 
-The 23-point gap between calibrated and cold is the point: it is the evidence
-that the per-step statistical model earns its place. Before this change cold
-also scored 100%, which meant the model contributed nothing.
-Per kind: stall 100%, silent_failure 99.7%, error_loop 98.4%,
-rage_click 94.2% (hardest, because benign impatience reaches 6 and injected
+The 35-point gap between calibrated and cold is the point: it is the evidence
+that the per-step statistical model earns its place. Before the overlap change
+cold also scored 100%, which meant the model contributed nothing.
+Per kind: silent_failure 99.4%, error_loop 98.5%, stall 95.8%,
+rage_click 94.5% (hardest, because benign impatience reaches 6 and injected
 rage starts at 4).
 
-`flowstate/detect.py` measures both cheat baselines on every run rather than
+Both cheats now score *below* a cold miner, because a single global "too slow"
+threshold cannot survive `tx_pending` being legitimately slow (healthy up to
+45s). `flowstate/detect.py` measures both baselines on every run rather than
 quoting them, so a future change that re-leaks a label shows up immediately.
 
-A live round shows ~90% rather than 97.7%, because a fresh miner starts cold
-and crosses its 30-session threshold partway through. That warm-up is worth
+A live round shows a few points lower, because a fresh miner starts cold and
+crosses its 30-session threshold partway through. That warm-up is worth
 demonstrating, not hiding.
+
+## Ranking two miners
+
+`bash scripts/demo_compare.sh` runs the real detector against
+`flowstate/detect_naive.py` (global thresholds, learns nothing, otherwise
+identical). 400 challenges each, both registered on netuid 600:
+
+| Miner | uid | Accuracy | Weight | Share |
+|---|---|---|---|---|
+| Per-step profile | 1 | 94.8% | 0.0613 | 58.7% |
+| Naive global | 2 | 90.8% | 0.0431 | 41.3% |
+
+Weight is `max(0, accuracy - 0.70) ** 2` — the floor sits above every
+zero-effort strategy above, and squaring stops a linear curve from paying
+4% more for substantially better work. Tunable with `--score-floor` and
+`--score-power`.
 
 ## What is left
 
-1. **A second, deliberately weaker miner**, to show the subnet actually
-   separating a good miner from a bad one in the weights. The validator
-   already handles N miners — `discover_miners` returns a list, challenges
-   fan out concurrently, scores are per-hotkey and weights per-uid — but it
-   has never run with more than one. Needs: a weak detector variant, a third
-   hotkey registered (~τ0.008), and `--miner-url` extended to accept several
-   URLs.
-2. Nothing is committed to git — files are staged only.
+1. **Consensus scoring** for the organic stream — scoring unverifiable work
+   means comparing miners against each other, which risks rewarding
+   conformity over correctness.
+2. **A real dApp feeding the organic stream.** Organic sessions are currently
+   fabricated with their answers discarded, which proves the path, not the
+   product.
+3. **One flow only** — everything assumes a token swap. `SWAP_FLOW` being a
+   module-level constant is the main thing in the way of a second flow.
 
 ## Traps already hit — do not re-learn these
 

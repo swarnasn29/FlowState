@@ -51,7 +51,7 @@ if python -m scripts.wait_for_axon --hotkey miner --timeout "${AXON_WAIT:-90}"; 
   echo "=== validator: discovering miner from the metagraph ==="
 else
   DISCOVERY=(--once --organic --set-weights --challenges "$CHALLENGES"
-             --miner-url "http://127.0.0.1:$PORT")
+             --miner "miner=http://127.0.0.1:$PORT")
   echo "=== validator: axon not on chain yet, using direct URL ==="
   echo "    (weights still go on chain - uid comes from registration)"
 fi

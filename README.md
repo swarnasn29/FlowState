@@ -78,10 +78,12 @@ chain, what the chain itself reported:
 }
 ```
 
-Healthy dwell ranges are **per step**, and the ranges differ by more than an
-order of magnitude: `quote_received` is normal at 300–1,200ms while `tx_pending`
-is normal at 3,000–15,000ms. This is deliberate. It means **"the slowest step is
-the problem" is wrong**, and a miner that assumes it fails.
+Healthy dwell ranges are **per step**, and they differ by more than two orders
+of magnitude: `quote_received` is normal at 300–1,200ms, while `tx_pending`
+under chain congestion is normal all the way to 45,000ms — longer than an
+injected stall's lower bound. This is the single most important property of the
+data. It means **"the slowest step is the problem" is wrong**, and measurably
+so: that heuristic scores 52.3%, worse than a miner with no history at all.
 
 ### Friction taxonomy
 
@@ -133,27 +135,62 @@ back to desync plus a "slowest step" guess. It gets better as it serves traffic.
 Measured over 2,000 unseen sessions after 2,000 calibration sessions
 (`python -m flowstate.detect`):
 
-| Miner | Accuracy |
+| Strategy | Accuracy |
 |---|---|
-| **Calibrated** — learns per-step norms | **97.7%** |
-| **Cold** — same code, no history | **74.1%** |
-| Cheat: "the slowest step" | 73.7% |
-| Cheat: "first non-ok `ui_state`" | 54.9% |
+| **Per-step profile, calibrated** | **97.0%** |
+| Naive global thresholds | 89.5% |
+| Per-step profile, cold — same code, no history | 62.0% |
+| Cheat: "first non-ok `ui_state`" | 55.8% |
+| Cheat: "the slowest step" | 52.3% |
 | Random floor | 12.5% |
 
-**The 23-point gap between calibrated and cold is the result that matters.** It
+**The 35-point gap between calibrated and cold is the result that matters.** It
 is the evidence that the per-step statistical model earns its place rather than
-being decoration. Both cheat baselines are *measured on every run*, not quoted,
-so any change that re-leaks a label shows up immediately.
+being decoration — same code, same thresholds, the only difference is
+accumulated history. Both cheat baselines are *measured on every run*, not
+quoted, so any change that re-leaks a label shows up immediately.
 
-By friction kind: `stall` 100%, `silent_failure` 99.7%, `error_loop` 98.4%,
-`rage_click` 94.2%. Rage-click is hardest because benign impatience reaches 6
+Note that both cheats now score *below* a cold miner. A single global "too
+slow" threshold cannot work once a healthy `tx_pending` runs to 45 seconds,
+which is the whole argument for modelling friction per step.
+
+By friction kind: `silent_failure` 99.4%, `error_loop` 98.5%, `stall` 95.8%,
+`rage_click` 94.5%. Rage-click is hardest because benign impatience reaches 6
 clicks while injected rage starts at 4 — some cases are genuinely undecidable,
 and a detector scoring 100% there would mean a label had leaked.
 
-A live round reports ~90% rather than 97.7%, because a fresh miner starts cold
-and crosses its 30-session threshold partway through. That warm-up is a real
+A live round reports a few points lower, because a fresh miner starts cold and
+crosses its 30-session threshold partway through. That warm-up is a real
 property of the design, worth showing rather than hiding.
+
+### Does the subnet actually rank anyone?
+
+The question a Protocol Track judge asks. `scripts/demo_compare.sh` runs the
+real detector against a deliberately weaker one — `flowstate/detect_naive.py`,
+which knows the desync trick and uses identical signal weights, and differs in
+exactly one respect: global thresholds instead of per-step ones. Both miners
+are genuinely trying.
+
+400 scored challenges each, both registered on netuid 600:
+
+| Miner | uid | Accuracy | Weight | Emission share |
+|---|---|---|---|---|
+| Per-step profile | 1 | 94.8% | 0.0613 | **58.7%** |
+| Naive global | 2 | 90.8% | 0.0431 | **41.3%** |
+
+Weight is **not** linear in accuracy:
+
+```
+weight = max(0, accuracy − 0.70) ²
+```
+
+Two deliberate choices. The **0.70 floor** sits above every zero-effort
+strategy in the table above — a cold miner, both cheats and random all earn
+nothing, which is a statement about what this subnet is willing to pay for.
+**Squaring** turns a 4-point accuracy difference into a 1.4× reward difference,
+because a linear curve is a broken incentive: a miner doing materially better
+work would earn 4% more and nobody would bother. Both are tunable via
+`--score-floor` and `--score-power`.
 
 ---
 
@@ -164,7 +201,8 @@ property of the design, worth showing rather than hiding.
 | Network | `test.finney` |
 | Subnet | **netuid 600**, owned by coldkey `flowstate` |
 | Validator | hotkey `validator`, **uid 0**, `validator_permit: true` |
-| Miner | hotkey `miner`, **uid 1** |
+| Miner (per-step profile) | hotkey `miner`, **uid 1** |
+| Miner (naive, for comparison) | hotkey `miner_naive`, **uid 2** |
 | Status | Activated (`start_call`), tempo 360 |
 
 Verified end-to-end: the miner published its axon with `ServeAxon`, the
@@ -178,9 +216,10 @@ commit-reveal enabled, so `SetWeights` takes the timelock path automatically.
 | Item | TAO |
 |---|---|
 | Create subnet | 1.0 |
-| Register miner hotkey | 0.0078 |
-| Fees (register, activate, weights, serve) | ~0.002 |
-| **Remaining** | **~1.99** |
+| Register `miner` hotkey | 0.0078 |
+| Register `miner_naive` hotkey | 0.0051 |
+| Fees (registrations, activate, weights, serve) | ~0.004 |
+| **Remaining** | **~1.98** |
 
 Registration cost τ0.0078 instead of τ0.99 because a new subnet's burn starts
 near the creation price and decays over hours. Waiting about two hours before
@@ -216,17 +255,19 @@ spend a miner's CPU.
 
 ```
 flowstate/
-  telemetry.py    validator side: session generation + friction injection
-  detect.py       miner side: per-step profiling + anomaly detection
-  protocol.py     the wire contract that replaces Synapse
+  telemetry.py     validator side: session generation + friction injection
+  detect.py        miner side: per-step profiling + anomaly detection
+  detect_naive.py  deliberately weaker detector, for the ranking comparison
+  protocol.py      the wire contract that replaces Synapse
 neurons/
-  miner.py        FastAPI server, signature auth, metagraph policy, ServeAxon
-  validator.py    scored + organic streams, EMA scoring, SetWeights
+  miner.py         FastAPI server, signature auth, metagraph policy, ServeAxon
+  validator.py     scored + organic streams, round scoring, SetWeights
 tests/
   test_auth_loop.py
 scripts/
-  demo_local.sh   full loop on localhost, no chain spend
-  demo_chain.sh   full loop on chain: publish, discover, score, set weights
+  demo_local.sh    full loop on localhost, no chain spend
+  demo_chain.sh    full loop on chain: publish, discover, score, set weights
+  demo_compare.sh  two miners, one validator: the ranking demonstration
   wait_for_axon.py
 ```
 
@@ -241,13 +282,20 @@ source ~/venvs/flowstate/bin/activate
 cd /mnt/c/Users/swarn/Documents/FlowStateProject
 
 bash scripts/demo_local.sh                 # localhost, no chain spend
+bash scripts/demo_compare.sh               # two miners ranked, no chain spend
+SET_WEIGHTS=1 bash scripts/demo_compare.sh # ...and commit the split on chain
 PUBLISH_IP=$(hostname -I | awk '{print $1}') \
-  bash scripts/demo_chain.sh               # full on-chain loop
+  bash scripts/demo_chain.sh               # full on-chain loop, one miner
 
 python -m tests.test_auth_loop             # 7 auth cases
 python -m flowstate.detect                 # accuracy + cheat baselines
+python -m flowstate.detect_naive           # profiled vs naive, per kind
 python -m flowstate.telemetry              # sample sessions + leak check
 ```
+
+Weights are rate limited to one commit per 100 blocks (~20 minutes) per
+validator, so a second `SET_WEIGHTS=1` run shortly after the first will report
+how many blocks to wait rather than committing.
 
 ---
 
@@ -281,16 +329,35 @@ for minutes under the chain's serving rate limit. A miner that answers nothing
 while it waits is losing score for free, so publishing runs concurrently with
 serving.
 
+**A convex incentive curve, not linear weight on accuracy.** See §4. Linear
+weighting means a materially better miner earns marginally more, so nobody
+improves and the subnet stagnates.
+
+**Scores update once per round, from that round's accuracy — never per
+challenge.** An early version folded single right/wrong answers into an EMA at
+alpha 0.2, giving an effective memory of about five challenges. It scored a
+90.8%-accurate miner at 0.66 and handed out a 100%/0% emission split on pure
+luck. The comment said "per round" while the code ran per challenge, and the
+on-chain weights were wrong until it was caught.
+
+**`tx_pending`'s healthy range was widened from 15s to 45s** on the grounds
+that a congested chain genuinely takes that long. Worth stating plainly: this
+change also happens to favour per-step modelling, since before it a single
+global threshold worked fine. The justification is realism and the same change
+would be right without the comparison — but it was a deliberate call, not an
+accident of the data.
+
 ---
 
 ## 10. Not done
 
-1. **A second, deliberately weaker miner**, to show the weights actually
-   separating a good miner from a bad one. The validator already handles N
-   miners — challenges fan out concurrently, scores are per-hotkey, weights per
-   uid — but it has never run with more than one. Needs a weak detector variant,
-   a third registered hotkey, and multi-URL support in the validator.
-2. **Consensus scoring** for the organic stream (see §1).
-3. **A real dApp feeding the organic stream.** Today organic sessions are
+1. **Consensus scoring** for the organic stream (see §1).
+2. **A real dApp feeding the organic stream.** Today organic sessions are
    fabricated and their answers discarded, which proves the path but not the
    product.
+3. **Miners are only ever scored, never dropped.** A miner below the floor
+   earns nothing but keeps its uid indefinitely. A production subnet would
+   prune persistently useless neurons.
+4. **One flow only.** Everything assumes a token swap. A second flow (NFT
+   mint, bridge) would test whether the per-step approach generalises, and
+   `SWAP_FLOW` being a module-level constant is the main thing in the way.

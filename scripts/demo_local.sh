@@ -48,4 +48,4 @@ python -m neurons.validator \
   --once \
   --organic \
   --challenges "$CHALLENGES" \
-  --miner-url "http://127.0.0.1:$PORT"
+  --miner "miner=http://127.0.0.1:$PORT"

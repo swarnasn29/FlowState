@@ -28,7 +28,11 @@ SWAP_FLOW: list[tuple[str, int, int]] = [
     ("quote_received", 300, 1_200),
     ("token_approve", 2_000, 9_000),   # MetaMask popup - inherently slow
     ("confirm_swap", 1_500, 6_000),    # second popup
-    ("tx_pending", 3_000, 15_000),     # chain latency - slowest healthy step
+    # Chain latency, and under congestion a perfectly healthy confirmation can
+    # take the best part of a minute. This range overlaps the injected stall
+    # range on purpose: it is what makes a single global "too slow" threshold
+    # useless, because 40s is alarming here and unremarkable on the step above.
+    ("tx_pending", 3_000, 45_000),
     ("tx_success", 400, 2_000),
 ]
 

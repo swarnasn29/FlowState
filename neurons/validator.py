@@ -43,10 +43,30 @@ from flowstate.telemetry import generate_organic, generate_task
 
 log = logging.getLogger("flowstate.validator")
 
-# Weight of the newest round when folding it into a miner's running score. Low
-# enough that one unlucky round cannot crater a good miner, high enough that a
-# miner that stops working loses its weight within a few rounds.
+# Weight of the newest round's accuracy when folding it into a miner's running
+# score, applied once per round and never per challenge. Low enough that one
+# unlucky round cannot crater a good miner, high enough that a miner which
+# stops working loses its weight within a few rounds.
 SCORE_EMA_ALPHA = 0.2
+
+# Accuracy a miner must beat before it earns anything. Set just under the
+# trivial baselines: answering "the slowest step" scores about 74% and
+# "the first non-ok ui_state" about 55%, so anything at or below this floor is
+# reachable with no real analysis and should not be paid.
+SCORE_FLOOR = 0.70
+
+# Convexity of the incentive curve. Weight is (accuracy - floor) ** power.
+#
+# A linear curve is a broken incentive: a miner improving from 89% to 97% would
+# earn roughly 8% more reward for substantially harder work, so nobody bothers.
+# Squaring the excess over the floor means the better miner earns materially
+# more, which is the whole mechanism by which a subnet gets better over time.
+SCORE_POWER = 2.0
+
+
+def shape_weight(accuracy: float, floor: float, power: float) -> float:
+    """Turn a raw accuracy into an emission weight."""
+    return max(0.0, accuracy - floor) ** power
 
 
 @dataclass
@@ -69,12 +89,23 @@ class MinerEndpoint:
 
 @dataclass
 class MinerScore:
-    """Running record for one miner."""
+    """Running record for one miner.
+
+    `ema` is updated once per *round*, from that round's measured accuracy -
+    never once per challenge. Folding single right/wrong answers in at alpha
+    0.2 gives an effective memory of about five challenges, which turns the
+    score into "did it get the last few right" instead of "how good is it",
+    and hands out weights on luck. An earlier version did exactly that and
+    scored a 90.8%-accurate miner at 0.66.
+    """
 
     attempts: int = 0
     correct: int = 0
     failures: int = 0
     ema: float = 0.0
+    rounds: int = 0
+    round_attempts: int = 0
+    round_correct: int = 0
     confidences: list[float] = field(default_factory=list)
 
     @property
@@ -82,43 +113,64 @@ class MinerScore:
         return self.correct / self.attempts if self.attempts else 0.0
 
     def record(self, correct: bool | None, confidence: float = 0.0) -> None:
-        """Fold one answer in. `None` means the miner failed to answer."""
+        """Note one answer. `None` means the miner failed to answer."""
         self.attempts += 1
+        self.round_attempts += 1
         if correct is None:
             self.failures += 1
-            outcome = 0.0
         else:
             self.correct += correct
-            outcome = float(correct)
+            self.round_correct += correct
             self.confidences.append(confidence)
-        self.ema = (1 - SCORE_EMA_ALPHA) * self.ema + SCORE_EMA_ALPHA * outcome
+
+    def end_round(self) -> float:
+        """Fold this round's accuracy into the running score, and return it."""
+        if not self.round_attempts:
+            return self.ema
+        round_accuracy = self.round_correct / self.round_attempts
+        if self.rounds == 0:
+            # Nothing to blend with yet. Starting from 0.0 and moving 20% would
+            # score a 95%-accurate miner at 0.19 and give it almost no weight
+            # for no reason other than being new.
+            self.ema = round_accuracy
+        else:
+            self.ema = (
+                (1 - SCORE_EMA_ALPHA) * self.ema
+                + SCORE_EMA_ALPHA * round_accuracy
+            )
+        self.rounds += 1
+        self.round_attempts = 0
+        self.round_correct = 0
+        return round_accuracy
 
 
 async def discover_miners(
     client: bt.Subtensor,
     netuid: int,
     self_hotkey: str,
-    override_url: str | None,
-    override_hotkey: str | None,
+    overrides: list[tuple[str, str]] | None = None,
 ) -> list[MinerEndpoint]:
     """Find miners to query.
 
-    Normally this reads published endpoints from the metagraph. The override
-    exists because a miner on a laptop has no routable address to publish, so
-    a local demo would otherwise be impossible without paying to register.
+    Normally this reads published endpoints from the metagraph. Overrides exist
+    because a miner on a laptop has no routable address to publish, so a local
+    demo would otherwise be impossible without paying to register - and because
+    running several miners on one host means several ports behind one IP.
     """
     metagraph = await client.subnets.metagraph(netuid=netuid)
 
-    if override_url:
-        assert override_hotkey is not None
-        neuron = metagraph.by_hotkey(override_hotkey)
-        endpoint = MinerEndpoint(
-            hotkey=override_hotkey,
-            url=override_url.rstrip("/"),
-            uid=neuron.uid if neuron is not None else None,
-        )
-        log.info("using override endpoint %s at %s", endpoint, endpoint.url)
-        return [endpoint]
+    if overrides:
+        endpoints = []
+        for hotkey, url in overrides:
+            neuron = metagraph.by_hotkey(hotkey)
+            endpoint = MinerEndpoint(
+                hotkey=hotkey,
+                url=url.rstrip("/"),
+                uid=neuron.uid if neuron is not None else None,
+            )
+            log.info("using override endpoint %s at %s", endpoint, endpoint.url)
+            endpoints.append(endpoint)
+        return endpoints
 
     endpoints = []
     for neuron in metagraph.neurons:
@@ -193,6 +245,11 @@ async def scored_round(
             correct = reply.friction_index == answer["friction_index"]
             score.record(correct, reply.confidence)
 
+    # Closing the round here rather than in the caller means the per-round
+    # accuracy can never be left un-folded, which would freeze every weight.
+    for endpoint in endpoints:
+        scores.setdefault(endpoint.hotkey, MinerScore()).end_round()
+
 
 async def organic_round(
     wallet: bt.Wallet,
@@ -212,17 +269,39 @@ async def organic_round(
     return list(zip(endpoints, replies))
 
 
-def report(scores: dict[str, MinerScore], endpoints: list[MinerEndpoint]) -> None:
+def report(
+    scores: dict[str, MinerScore],
+    endpoints: list[MinerEndpoint],
+    floor: float = SCORE_FLOOR,
+    power: float = SCORE_POWER,
+) -> None:
+    """Print the standings, including the emission share each miner has earned.
+
+    `share` is the number that matters: it is the proportion of this subnet's
+    emission the miner would receive, after the incentive curve has turned a
+    modest accuracy difference into a material reward difference.
+    """
     by_hotkey = {endpoint.hotkey: endpoint for endpoint in endpoints}
-    print(f"\n  {'miner':<26}{'n':>5}{'correct':>9}{'acc':>8}{'ema':>7}{'fails':>7}{'conf':>7}")
+    shaped = {
+        hotkey: shape_weight(score.ema, floor, power)
+        for hotkey, score in scores.items()
+    }
+    total = sum(shaped.values())
+
+    print(f"\n  {'miner':<24}{'n':>5}{'acc':>8}{'ema':>7}{'conf':>7}"
+          f"{'weight':>9}{'share':>8}{'fails':>7}")
     for hotkey, score in sorted(scores.items(), key=lambda kv: -kv[1].ema):
         endpoint = by_hotkey.get(hotkey)
         label = str(endpoint) if endpoint else hotkey[:10] + ".."
         conf = statistics.mean(score.confidences) if score.confidences else 0.0
+        weight = shaped[hotkey]
+        share = weight / total if total > 0 else 0.0
         print(
-            f"  {label:<26}{score.attempts:>5}{score.correct:>9}"
-            f"{score.accuracy:>8.1%}{score.ema:>7.2f}{score.failures:>7}{conf:>7.2f}"
+            f"  {label:<24}{score.attempts:>5}{score.accuracy:>8.1%}"
+            f"{score.ema:>7.2f}{conf:>7.2f}{weight:>9.4f}{share:>8.1%}"
+            f"{score.failures:>7}"
         )
+    print(f"  (weight = max(0, ema - {floor:.2f}) ** {power:g})")
 
 
 async def submit_weights(
@@ -231,12 +310,14 @@ async def submit_weights(
     netuid: int,
     endpoints: list[MinerEndpoint],
     scores: dict[str, MinerScore],
+    floor: float = SCORE_FLOOR,
+    power: float = SCORE_POWER,
 ) -> None:
     """Write the current standings to chain.
 
     Only registered miners can receive weight. SetWeights conforms the values
-    to the subnet's hyperparameters itself, so raw EMA scores are fine - only
-    the proportions matter.
+    to the subnet's hyperparameters itself, so unnormalised numbers are fine -
+    only the proportions matter, which is exactly what the shaping sets.
     """
     uids: list[int] = []
     weights: list[float] = []
@@ -248,13 +329,16 @@ async def submit_weights(
         if score is None:
             continue
         uids.append(endpoint.uid)
-        weights.append(score.ema)
+        weights.append(shape_weight(score.ema, floor, power))
 
     if not uids:
         log.warning("no registered miners to weight; skipping")
         return
     if sum(weights) <= 0:
-        log.warning("every score is zero; skipping to avoid a meaningless commit")
+        log.warning(
+            "every miner is at or below the %.0f%% floor; skipping rather than "
+            "committing a meaningless all-zero vector", floor * 100
+        )
         return
 
     log.info("setting weights: %s", dict(zip(uids, (round(w, 3) for w in weights))))
@@ -270,32 +354,40 @@ async def submit_weights(
         log.error("SetWeights failed: %s: %s", type(exc).__name__, exc)
 
 
+def resolve_hotkey(wallet_name: str, token: str) -> str:
+    """Accept either a raw ss58 address or the name of a local wallet hotkey."""
+    if token.startswith("5") and len(token) > 40:
+        return token
+    return bt.Wallet(name=wallet_name, hotkey=token).hotkey.ss58_address
+
+
 async def run(args: argparse.Namespace) -> None:
     wallet = bt.Wallet(name=args.wallet, hotkey=args.hotkey)
     self_hotkey = wallet.hotkey.ss58_address
     log.info("validator hotkey %s", self_hotkey)
 
-    override_hotkey = None
-    if args.miner_url:
-        # Accept either a wallet hotkey name or a raw ss58 address.
-        if args.miner_hotkey.startswith("5") and len(args.miner_hotkey) > 40:
-            override_hotkey = args.miner_hotkey
-        else:
-            override_hotkey = bt.Wallet(
-                name=args.wallet, hotkey=args.miner_hotkey
-            ).hotkey.ss58_address
+    overrides: list[tuple[str, str]] = []
+    for spec in args.miner or ():
+        if "=" not in spec:
+            raise SystemExit(
+                f"--miner expects HOTKEY=URL, got {spec!r}\n"
+                f"  e.g. --miner miner=http://127.0.0.1:8091"
+            )
+        token, url = spec.split("=", 1)
+        overrides.append((resolve_hotkey(args.wallet, token), url))
 
     scores: dict[str, MinerScore] = {}
 
     async with bt.Subtensor(args.network) as client:
         endpoints = await discover_miners(
-            client, args.netuid, self_hotkey, args.miner_url, override_hotkey
+            client, args.netuid, self_hotkey, overrides
         )
         if not endpoints:
             raise SystemExit(
                 "no miners to query. Either run a miner that publishes its "
-                "axon, or pass --miner-url http://127.0.0.1:8091 for a local "
-                "demo."
+                "axon, or name them explicitly:\n"
+                "  --miner miner=http://127.0.0.1:8091 "
+                "--miner miner_naive=http://127.0.0.1:8092"
             )
 
         seed_base = args.seed
@@ -308,7 +400,7 @@ async def run(args: argparse.Namespace) -> None:
             seed_base += args.challenges
             log.info("scored round %d complete (%d challenges)",
                      round_number, args.challenges)
-            report(scores, endpoints)
+            report(scores, endpoints, args.score_floor, args.score_power)
 
             if args.organic:
                 print("\n  --- organic stream (unscored) ---")
@@ -326,7 +418,8 @@ async def run(args: argparse.Namespace) -> None:
 
             if args.set_weights:
                 await submit_weights(
-                    client, wallet, args.netuid, endpoints, scores
+                    client, wallet, args.netuid, endpoints, scores,
+                    args.score_floor, args.score_power,
                 )
 
             if args.once:
@@ -352,10 +445,17 @@ def main() -> None:
                         help="also relay one unscored organic session per round")
     parser.add_argument("--set-weights", action="store_true",
                         help="submit weights to chain after each round")
-    parser.add_argument("--miner-url",
-                        help="query this URL instead of discovering from chain")
-    parser.add_argument("--miner-hotkey", default="miner",
-                        help="wallet hotkey name or ss58 of the --miner-url miner")
+    parser.add_argument(
+        "--miner",
+        action="append",
+        metavar="HOTKEY=URL",
+        help="query this miner instead of discovering from chain; repeatable. "
+             "HOTKEY is a local wallet hotkey name or an ss58 address.",
+    )
+    parser.add_argument("--score-floor", type=float, default=SCORE_FLOOR,
+                        help="accuracy a miner must beat to earn any weight")
+    parser.add_argument("--score-power", type=float, default=SCORE_POWER,
+                        help="convexity of the incentive curve")
     args = parser.parse_args()
 
     logging.basicConfig(

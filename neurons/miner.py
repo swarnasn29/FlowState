@@ -23,10 +23,20 @@ import bittensor as bt
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request
 
-from flowstate.detect import StepProfile, detect
+from flowstate import detect as detect_profiled
+from flowstate import detect_naive
 from flowstate.protocol import DETECT_PATH, DetectRequest, DetectResponse
 
 log = logging.getLogger("flowstate.miner")
+
+# Interchangeable detection strategies. Both expose a profile with `observe`
+# and a `detect(challenge, profile)`, so the server does not care which it has.
+# Running two miners with different strategies is how we show the subnet's
+# weights separating a better miner from a worse one.
+DETECTORS = {
+    "profile": (detect_profiled.StepProfile, detect_profiled.detect),
+    "naive": (detect_naive.NaiveProfile, detect_naive.detect),
+}
 
 # How often to re-read the metagraph. Registrations and permits change slowly,
 # and every refresh is a chain round-trip, so this does not need to be tight.
@@ -42,12 +52,20 @@ class MinerState:
     median/MAD to work without any separate training step.
     """
 
-    def __init__(self, wallet: bt.Wallet, netuid: int, require_permit: bool) -> None:
+    def __init__(
+        self,
+        wallet: bt.Wallet,
+        netuid: int,
+        require_permit: bool,
+        detector: str = "profile",
+    ) -> None:
         self.wallet = wallet
         self.netuid = netuid
         self.require_permit = require_permit
         self.hotkey_ss58 = wallet.hotkey.ss58_address
-        self.profile = StepProfile()
+        self.detector_name = detector
+        profile_cls, self.detect = DETECTORS[detector]
+        self.profile = profile_cls()
         self.metagraph: bt.Metagraph | None = None
         self.served = 0
 
@@ -121,7 +139,7 @@ async def detect_friction(
     # Learn from the session before answering it. The validator's own task is
     # the miner's training data, which is the only data a miner ever gets.
     state.profile.observe(challenge)
-    finding = detect(challenge, state.profile)
+    finding = state.detect(challenge, state.profile)
     state.served += 1
 
     log.info(
@@ -150,8 +168,13 @@ async def run(args: argparse.Namespace) -> None:
     global state
 
     wallet = bt.Wallet(name=args.wallet, hotkey=args.hotkey)
-    state = MinerState(wallet, args.netuid, require_permit=not args.allow_unpermitted)
-    log.info("miner hotkey %s", state.hotkey_ss58)
+    state = MinerState(
+        wallet,
+        args.netuid,
+        require_permit=not args.allow_unpermitted,
+        detector=args.detector,
+    )
+    log.info("miner hotkey %s (detector: %s)", state.hotkey_ss58, args.detector)
 
     async with bt.Subtensor(args.network) as client:
         await state.refresh_metagraph(client)
@@ -258,6 +281,13 @@ def main() -> None:
         dest="require_registration",
         action="store_false",
         help="serve even if this hotkey is not registered (local testing)",
+    )
+    parser.add_argument(
+        "--detector",
+        choices=tuple(DETECTORS),
+        default="profile",
+        help="detection strategy: 'profile' learns per-step norms, 'naive' "
+             "applies global thresholds",
     )
     args = parser.parse_args()
 

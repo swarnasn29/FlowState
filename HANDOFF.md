@@ -95,6 +95,22 @@ zero-effort strategy above, and squaring stops a linear curve from paying
 4% more for substantially better work. Tunable with `--score-floor` and
 `--score-power`.
 
+## Pitch artifacts
+
+Both are **private** Claude artifacts — nobody else can open them until shared
+from each page's own Share menu.
+
+- **Deck**, 12 slides, every one with speaker notes:
+  https://claude.ai/artifact/CBvhDtwWu45oMbRL5eM3RH
+  Arc: problem → mechanism → proof → limits. Downloads as .pptx or PDF.
+- **One-page site**, for a submission link or a phone:
+  https://claude.ai/artifact/T1gMK7X4bD47ELqM5xFUqn
+  Same material, no JavaScript and no libraries, so nothing can fail to load.
+
+Every figure in both comes from a script in this repo. If a number here
+changes, re-run `python -m flowstate.detect` and `demo_compare.sh` and update
+slides `skill`, `ranking` and `onchain`, plus the matching page sections.
+
 ## What is left
 
 1. **Consensus scoring** for the organic stream — scoring unverifiable work

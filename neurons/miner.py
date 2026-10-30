@@ -34,8 +34,8 @@ log = logging.getLogger("flowstate.miner")
 # Running two miners with different strategies is how we show the subnet's
 # weights separating a better miner from a worse one.
 DETECTORS = {
-    "profile": (detect_profiled.StepProfile, detect_profiled.detect),
-    "naive": (detect_naive.NaiveProfile, detect_naive.detect),
+    "profile": (detect_profiled.StepProfile, detect_profiled.analyse),
+    "naive": (detect_naive.NaiveProfile, detect_naive.analyse),
 }
 
 # How often to re-read the metagraph. Registrations and permits change slowly,
@@ -139,18 +139,21 @@ async def detect_friction(
     # Learn from the session before answering it. The validator's own task is
     # the miner's training data, which is the only data a miner ever gets.
     state.profile.observe(challenge)
-    finding = state.detect(challenge, state.profile)
+    findings = state.detect(challenge, state.profile)
     state.served += 1
 
+    # "clean" is a real answer, not a failure to answer: most sessions have no
+    # friction in them, and saying so earns full marks.
     log.info(
-        "served #%d for %s: index=%d kind=%s conf=%.2f",
+        "served #%d for %s: %s",
         state.served,
         caller.hotkey_ss58[:10],
-        finding.friction_index,
-        finding.friction_kind,
-        finding.confidence,
+        ", ".join(
+            f"{f.friction_index}:{f.friction_kind}@{f.confidence:.2f}"
+            for f in findings
+        ) or "clean",
     )
-    return DetectResponse(**finding.to_response())
+    return DetectResponse(findings=[finding.to_wire() for finding in findings])
 
 
 @app.get("/health")

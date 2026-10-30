@@ -26,11 +26,16 @@ PORT_WEAK="${PORT_WEAK:-8092}"
 # Enough challenges that the profiled detector is past its warm-up, or the
 # comparison measures who starts faster rather than who is better.
 #
-# Measured crossover: at 40 challenges the naive miner wins 80.0% to 62.5%,
-# at 100 it still wins 88.0% to 83.0%, and only by 200 does the profiled
-# detector lead (89.0% to 84.5%). 400 leaves a comfortable margin.
-CHALLENGES="${CHALLENGES:-400}"
-MIN_CHALLENGES="${MIN_CHALLENGES:-200}"
+# Measured crossover under the current rubric: at 40 challenges the naive
+# miner wins 0.806 to 0.553, at 100 it still wins 0.769 to 0.752, at 200 they
+# are exactly tied at 0.809, and the profiled detector only leads clearly from
+# 300 (0.827 to 0.803). 600 leaves a comfortable margin.
+#
+# The crossover moved later when the task got harder - more to learn means a
+# longer warm-up - so re-measure it after any change to the generator rather
+# than trusting this number.
+CHALLENGES="${CHALLENGES:-600}"
+MIN_CHALLENGES="${MIN_CHALLENGES:-300}"
 
 if (( CHALLENGES < MIN_CHALLENGES )); then
   cat >&2 <<MSG

@@ -113,14 +113,20 @@ for seed in range(500):
             break
         clock += event["dwell_ms"]
 
-    idx = answer["friction_index"]
-    if not 0 <= idx < len(events):
-        problems.append(f"seed {seed}: friction_index {idx} out of range")
-    if answer["friction_kind"] not in FRICTION_KINDS:
-        problems.append(f"seed {seed}: unknown kind {answer['friction_kind']}")
-    # silent_failure can only land on a step that talks to the chain.
-    if answer["friction_kind"] == "silent_failure":
-        if events[idx]["step"] not in AWAIT_STEPS:
+    findings = answer["findings"]
+    if len(findings) > 2:
+        problems.append(f"seed {seed}: {len(findings)} frictions, expected at most 2")
+    if len({f["index"] for f in findings}) != len(findings):
+        problems.append(f"seed {seed}: two frictions injected on one step")
+    for finding in findings:
+        idx = finding["index"]
+        if not 0 <= idx < len(events):
+            problems.append(f"seed {seed}: index {idx} out of range")
+            continue
+        if finding["kind"] not in FRICTION_KINDS:
+            problems.append(f"seed {seed}: unknown kind {finding['kind']}")
+        # silent_failure can only land on a step that talks to the chain.
+        if finding["kind"] == "silent_failure" and events[idx]["step"] not in AWAIT_STEPS:
             problems.append(f"seed {seed}: silent_failure on {events[idx]['step']}")
     # Only AWAIT_STEPS carry chain data.
     for event in events:
@@ -131,7 +137,7 @@ for seed in range(500):
             break
 
     # The wire payload must not leak the answer.
-    for key in ("friction_index", "friction_kind", "answer", "label"):
+    for key in ("findings", "friction_index", "friction_kind", "answer", "label"):
         if key in challenge:
             problems.append(f"seed {seed}: challenge leaks {key!r}")
 
@@ -145,15 +151,23 @@ if problems:
         print(" ", line)
     print(f"{len(problems)} problem(s)")
     sys.exit(1)
+counts = {}
+for seed in range(500):
+    _, answer = generate_task(seed=seed)
+    n = len(answer["findings"])
+    counts[n] = counts.get(n, 0) + 1
 print("500 sessions: event count, order, indices, timeline, chain placement,")
-print("silent_failure placement and answer-leak checks all clean")
+print("distinct friction steps, silent_failure placement, answer-leak: all clean")
+print("friction counts seen:", {n: counts[n] for n in sorted(counts)})
 PY
 record "token-swap data structures" $?
 
 echo "=== 5. protocol round-trip ==="
 python - <<'PY'
 import sys
-from flowstate.protocol import DetectRequest, DetectResponse, canonical_body
+from flowstate.protocol import (
+    MAX_FINDINGS, DetectRequest, DetectResponse, canonical_body,
+)
 from flowstate.telemetry import generate_task
 
 problems = []
@@ -174,21 +188,34 @@ if canonical_body(payload) != canonical_body(reordered):
     problems.append("canonical_body depends on key order")
 
 try:
-    DetectResponse(friction_index=-1, friction_kind="stall")
+    DetectResponse(findings=[{"index": -1, "kind": "stall"}])
     problems.append("DetectResponse accepted a negative index")
 except Exception:
     pass
 try:
-    DetectResponse(friction_index=0, friction_kind="stall", confidence=5.0)
+    DetectResponse(findings=[{"index": 0, "kind": "stall", "confidence": 5.0}])
     problems.append("DetectResponse accepted confidence > 1")
 except Exception:
     pass
+try:
+    DetectResponse(findings=[{"index": i, "kind": "stall"}
+                             for i in range(MAX_FINDINGS + 1)])
+    problems.append(f"DetectResponse accepted more than {MAX_FINDINGS} findings")
+except Exception:
+    pass
+# An empty response is a valid answer, not a malformed one: most sessions
+# are clean, and a miner must be able to say so.
+try:
+    DetectResponse(findings=[])
+except Exception:
+    problems.append("DetectResponse rejected an empty findings list")
 
 if problems:
     for line in problems:
         print(" ", line)
     sys.exit(1)
-print("canonical bytes stable and order-independent; response validation holds")
+print("canonical bytes stable and order-independent; findings validation,")
+print(f"the {MAX_FINDINGS}-finding cap and the empty-response case all hold")
 PY
 record "protocol round-trip" $?
 

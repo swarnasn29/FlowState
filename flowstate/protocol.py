@@ -19,8 +19,15 @@ import bittensor as bt
 import httpx
 from pydantic import BaseModel, Field
 
-PROTOCOL_VERSION = "flowstate/1"
+PROTOCOL_VERSION = "flowstate/2"
 DETECT_PATH = "/detect"
+
+# The most findings a miner may report for one session. A hard cap matters:
+# scoring is F1 over the reported set, and without a ceiling a miner could
+# name every step, buy perfect recall and accept the precision hit. Four is
+# half the flow - more than any real session carries, few enough that spraying
+# cannot pay.
+MAX_FINDINGS = 4
 
 # The validator drops a miner that takes longer than this. Generous, because a
 # miner building per-step statistics on a cold profile does real work, but
@@ -50,12 +57,26 @@ class DetectRequest(BaseModel):
     events: list[dict]
 
 
-class DetectResponse(BaseModel):
-    """A miner's verdict on where the friction is."""
+class FrictionFinding(BaseModel):
+    """One friction point a miner claims to have located."""
 
-    friction_index: int = Field(ge=0)
-    friction_kind: str
+    index: int = Field(ge=0)
+    kind: str
     confidence: float = Field(ge=0.0, le=1.0, default=0.0)
+
+
+class DetectResponse(BaseModel):
+    """A miner's verdict on a session.
+
+    `findings` may be empty, and an empty list is a real answer rather than a
+    failure to answer: most sessions are clean, and saying so correctly earns
+    full marks. Confidence is per finding, because a miner can be certain
+    about one step and hesitant about another in the same session.
+    """
+
+    findings: list[FrictionFinding] = Field(
+        default_factory=list, max_length=MAX_FINDINGS
+    )
     version: str = PROTOCOL_VERSION
 
 

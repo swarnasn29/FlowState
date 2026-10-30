@@ -29,7 +29,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import statistics
 from dataclasses import dataclass, field
 
 import bittensor as bt
@@ -44,6 +43,12 @@ from flowstate.protocol import (
     HotkeyAuth,
     canonical_body,
 )
+from flowstate.scoring import (
+    Scorecard,
+    describe_rubric,
+    score_response,
+    timeout_scorecard,
+)
 from flowstate.telemetry import generate_organic, generate_task
 
 log = logging.getLogger("flowstate.validator")
@@ -54,10 +59,11 @@ log = logging.getLogger("flowstate.validator")
 # stops working loses its weight within a few rounds.
 SCORE_EMA_ALPHA = 0.2
 
-# Accuracy a miner must beat before it earns anything. Set above every
-# zero-effort strategy measured in flowstate.detect: a cold miner with no
-# history scores 62.0%, "the first non-ok ui_state" 55.8% and "the slowest
-# step" 52.3%. None of them should be paid.
+# Rubric score a miner must beat before it earns anything. Set above every
+# zero-effort strategy measured in flowstate.detect under the current rubric:
+# a cold miner scores 0.524, "every non-ok ui_state" 0.439, "the slowest step"
+# 0.370, and "claim nothing, ever" 0.280 (which is simply the fraction of
+# sessions that are genuinely clean). None of those should be paid.
 SCORE_FLOOR = 0.70
 
 # Convexity of the incentive curve. Weight is (accuracy - floor) ** power.
@@ -105,34 +111,57 @@ class MinerScore:
     """
 
     attempts: int = 0
-    correct: int = 0
     failures: int = 0
+    perfect: int = 0
     ema: float = 0.0
     rounds: int = 0
     round_attempts: int = 0
-    round_correct: int = 0
-    confidences: list[float] = field(default_factory=list)
+    round_total: float = 0.0
+    # Lifetime sums per criterion, so the report can say *why* a miner is
+    # losing points rather than only that it is.
+    sum_total: float = 0.0
+    sum_localisation: float = 0.0
+    sum_kind: float = 0.0
+    sum_calibration: float = 0.0
+
+    def _mean(self, total: float) -> float:
+        return total / self.attempts if self.attempts else 0.0
 
     @property
-    def accuracy(self) -> float:
-        return self.correct / self.attempts if self.attempts else 0.0
+    def mean_total(self) -> float:
+        return self._mean(self.sum_total)
 
-    def record(self, correct: bool | None, confidence: float = 0.0) -> None:
-        """Note one answer. `None` means the miner failed to answer."""
+    @property
+    def mean_localisation(self) -> float:
+        return self._mean(self.sum_localisation)
+
+    @property
+    def mean_kind(self) -> float:
+        return self._mean(self.sum_kind)
+
+    @property
+    def mean_calibration(self) -> float:
+        return self._mean(self.sum_calibration)
+
+    def record(self, card: Scorecard, timed_out: bool = False) -> None:
+        """Note one marked session."""
         self.attempts += 1
         self.round_attempts += 1
-        if correct is None:
+        if timed_out:
             self.failures += 1
-        else:
-            self.correct += correct
-            self.round_correct += correct
-            self.confidences.append(confidence)
+        if card.localisation == 1.0:
+            self.perfect += 1
+        self.round_total += card.total
+        self.sum_total += card.total
+        self.sum_localisation += card.localisation
+        self.sum_kind += card.kind
+        self.sum_calibration += card.calibration
 
     def end_round(self) -> float:
-        """Fold this round's accuracy into the running score, and return it."""
+        """Fold this round's mean rubric score into the running score."""
         if not self.round_attempts:
             return self.ema
-        round_accuracy = self.round_correct / self.round_attempts
+        round_accuracy = self.round_total / self.round_attempts
         if self.rounds == 0:
             # Nothing to blend with yet. Starting from 0.0 and moving 20% would
             # score a 95%-accurate miner at 0.19 and give it almost no weight
@@ -145,7 +174,7 @@ class MinerScore:
             )
         self.rounds += 1
         self.round_attempts = 0
-        self.round_correct = 0
+        self.round_total = 0.0
         return round_accuracy
 
 
@@ -245,10 +274,12 @@ async def scored_round(
         for endpoint, reply in zip(endpoints, replies):
             score = scores.setdefault(endpoint.hotkey, MinerScore())
             if reply is None:
-                score.record(None)
+                # Latency is the pass/fail criterion: no answer in time is a
+                # zero for the session, not a skipped session.
+                score.record(timeout_scorecard(answer["findings"]), timed_out=True)
                 continue
-            correct = reply.friction_index == answer["friction_index"]
-            score.record(correct, reply.confidence)
+            wire = [finding.model_dump() for finding in reply.findings]
+            score.record(score_response(wire, answer["findings"]))
 
     # Closing the round here rather than in the caller means the per-round
     # accuracy can never be left un-folded, which would freeze every weight.
@@ -293,20 +324,22 @@ def report(
     }
     total = sum(shaped.values())
 
-    print(f"\n  {'miner':<24}{'n':>5}{'acc':>8}{'ema':>7}{'conf':>7}"
-          f"{'weight':>9}{'share':>8}{'fails':>7}")
+    print(f"\n  {'miner':<22}{'n':>5}{'SCORE':>8}{'loc':>6}{'kind':>6}"
+          f"{'calib':>7}{'perfect':>9}{'weight':>9}{'share':>8}{'fails':>7}")
     for hotkey, score in sorted(scores.items(), key=lambda kv: -kv[1].ema):
         endpoint = by_hotkey.get(hotkey)
         label = str(endpoint) if endpoint else hotkey[:10] + ".."
-        conf = statistics.mean(score.confidences) if score.confidences else 0.0
         weight = shaped[hotkey]
         share = weight / total if total > 0 else 0.0
+        perfect = score.perfect / score.attempts if score.attempts else 0.0
         print(
-            f"  {label:<24}{score.attempts:>5}{score.accuracy:>8.1%}"
-            f"{score.ema:>7.2f}{conf:>7.2f}{weight:>9.4f}{share:>8.1%}"
-            f"{score.failures:>7}"
+            f"  {label:<22}{score.attempts:>5}{score.mean_total:>8.3f}"
+            f"{score.mean_localisation:>6.2f}{score.mean_kind:>6.2f}"
+            f"{score.mean_calibration:>7.2f}{perfect:>9.1%}"
+            f"{weight:>9.4f}{share:>8.1%}{score.failures:>7}"
         )
-    print(f"  (weight = max(0, ema - {floor:.2f}) ** {power:g})")
+    print(f"  (weight = max(0, score - {floor:.2f}) ** {power:g};"
+          f" 'perfect' = sessions localised exactly)")
 
 
 async def submit_weights(
@@ -370,6 +403,10 @@ async def run(args: argparse.Namespace) -> None:
     wallet = bt.Wallet(name=args.wallet, hotkey=args.hotkey)
     self_hotkey = wallet.hotkey.ss58_address
     log.info("validator hotkey %s", self_hotkey)
+    # Printed every run on purpose: a scoring rule miners cannot read is a
+    # scoring rule they reverse-engineer by trial and error.
+    print()
+    print(describe_rubric())
 
     overrides: list[tuple[str, str]] = []
     for spec in args.miner or ():
@@ -414,12 +451,14 @@ async def run(args: argparse.Namespace) -> None:
                 ):
                     if reply is None:
                         print(f"  {endpoint}: no report")
+                    elif not reply.findings:
+                        print(f"  {endpoint}: no friction found  [not scored]")
                     else:
-                        print(
-                            f"  {endpoint}: friction at step index "
-                            f"{reply.friction_index} ({reply.friction_kind}), "
-                            f"confidence {reply.confidence:.2f}  [not scored]"
+                        detail = ", ".join(
+                            f"step {f.index} ({f.kind}) at {f.confidence:.2f}"
+                            for f in reply.findings
                         )
+                        print(f"  {endpoint}: {detail}  [not scored]")
 
             if args.set_weights:
                 await submit_weights(

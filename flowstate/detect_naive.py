@@ -34,7 +34,7 @@ GLOBAL_RAGE_CLICKS = 5
 # Same relative ordering as the real detector, so the comparison isolates the
 # per-step modelling rather than a difference in how signals are ranked.
 SIGNAL_WEIGHTS: dict[str, float] = {
-    "desync": 6.0,
+    "desync": 12.0,
     "stall": 1.2,
     "error_loop": 1.5,
     "rage_click": 0.9,
@@ -80,48 +80,49 @@ def _event_signals(event: dict) -> dict[str, float]:
     return signals
 
 
-def detect(challenge: dict, profile: NaiveProfile | None = None) -> Finding:
-    """Locate the friction point using global thresholds only.
+# The same decision threshold the real detector uses, so the comparison still
+# isolates one idea. What this one lacks is a self-imposed cap: it reports
+# everything that clears the bar, which on a clean session where a healthy
+# tx_pending exceeds a fixed 20-second rule means inventing friction.
+DECISION_THRESHOLD = 2.5
 
-    Signature matches `flowstate.detect.detect` so the two are interchangeable
-    from the miner's point of view. `profile` is accepted and ignored.
+
+def analyse(challenge: dict, profile: NaiveProfile | None = None) -> list[Finding]:
+    """Report every step that clears the global thresholds - possibly none.
+
+    Signature matches `flowstate.detect.analyse`, so the two are
+    interchangeable from the miner's point of view. `profile` is accepted and
+    ignored, because this strategy learns nothing.
     """
-    events = challenge["events"]
-
-    scored: list[tuple[float, int, dict[str, float]]] = []
-    for event in events:
+    findings: list[Finding] = []
+    for event in challenge["events"]:
         signals = _event_signals(event)
+        if not signals:
+            continue
         total = sum(SIGNAL_WEIGHTS[name] * value for name, value in signals.items())
-        scored.append((total, event["index"], signals))
-
-    scored.sort(key=lambda row: row[0], reverse=True)
-    best_score, best_index, best_signals = scored[0]
-    runner_up = scored[1][0] if len(scored) > 1 else 0.0
-
-    if best_signals:
+        if total < DECISION_THRESHOLD:
+            continue
         dominant = max(
-            best_signals,
-            key=lambda name: SIGNAL_WEIGHTS[name] * best_signals[name],
+            signals, key=lambda name: SIGNAL_WEIGHTS[name] * signals[name]
         )
-        kind = SIGNAL_TO_KIND[dominant]
-    else:
-        best_index = max(events, key=lambda e: e["dwell_ms"])["index"]
-        kind = "stall"
+        findings.append(
+            Finding(
+                friction_index=event["index"],
+                friction_kind=SIGNAL_TO_KIND[dominant],
+                score=round(total, 4),
+                confidence=total / (total + DECISION_THRESHOLD),
+                signals=signals,
+            )
+        )
 
-    confidence = 0.0 if best_score <= 0 else (best_score - runner_up) / best_score
-
-    return Finding(
-        friction_index=best_index,
-        friction_kind=kind,
-        score=round(best_score, 4),
-        confidence=confidence,
-        signals=best_signals,
-    )
+    findings.sort(key=lambda finding: finding.score, reverse=True)
+    return findings[:4]
 
 
 if __name__ == "__main__":
     from flowstate.detect import StepProfile
-    from flowstate.detect import detect as detect_profiled
+    from flowstate.detect import analyse as analyse_profiled
+    from flowstate.scoring import score_response
     from flowstate.telemetry import FRICTION_KINDS, generate_task
 
     CALIBRATION = range(0, 2_000)
@@ -132,20 +133,29 @@ if __name__ == "__main__":
         challenge, _ = generate_task(seed=seed)
         warm.observe(challenge)
 
-    def accuracy(fn, profile, kind: str | None = None) -> float:
-        hits = 0
+    def run(fn, profile, kind=None):
+        total = loc = kinds = 0.0
         for seed in EVALUATION:
             challenge, answer = generate_task(seed=seed, kind=kind)
-            hits += fn(challenge, profile).friction_index == answer["friction_index"]
-        return hits / len(EVALUATION)
+            wire = [f.to_wire() for f in fn(challenge, profile)]
+            card = score_response(wire, answer["findings"])
+            total += card.total
+            loc += card.localisation
+            kinds += card.kind
+        n = len(EVALUATION)
+        return total / n, loc / n, kinds / n
 
     print(f"evaluated on {len(EVALUATION)} unseen sessions\n")
-    print(f"{'detector':<30}{'accuracy':>10}")
-    print(f"{'per-step profile (calibrated)':<30}{accuracy(detect_profiled, warm):>10.1%}")
-    print(f"{'naive global thresholds':<30}{accuracy(detect, NaiveProfile()):>10.1%}")
+    print(f"{'detector':<32}{'SCORE':>8}{'loc':>7}{'kind':>7}")
+    for label, fn, profile in (
+        ("per-step profile (calibrated)", analyse_profiled, warm),
+        ("naive global thresholds", analyse, NaiveProfile()),
+    ):
+        total, loc, kinds = run(fn, profile)
+        print(f"{label:<32}{total:>8.3f}{loc:>7.2f}{kinds:>7.2f}")
 
-    print(f"\n{'friction kind':<30}{'profiled':>10}{'naive':>8}")
+    print(f"\n{'friction kind':<32}{'profiled':>9}{'naive':>8}")
     for friction in FRICTION_KINDS:
-        good = accuracy(detect_profiled, warm, kind=friction)
-        weak = accuracy(detect, NaiveProfile(), kind=friction)
-        print(f"{friction:<30}{good:>10.1%}{weak:>8.1%}")
+        good, _, _ = run(analyse_profiled, warm, kind=friction)
+        weak, _, _ = run(analyse, NaiveProfile(), kind=friction)
+        print(f"{friction:<32}{good:>9.3f}{weak:>8.3f}")

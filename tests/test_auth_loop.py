@@ -26,10 +26,12 @@ import neurons.miner as miner_mod
 from flowstate.protocol import (
     DETECT_PATH,
     JSON_HEADERS,
+    MAX_FINDINGS,
     DetectRequest,
     HotkeyAuth,
     canonical_body,
 )
+from flowstate.scoring import score_response
 from flowstate.telemetry import generate_task
 
 NETUID = 600
@@ -107,21 +109,26 @@ async def main() -> int:
         if ok:
             payload = response.json()
             # Deliberately not asserting the answer is right. This test is
-            # about the handshake; whether a cold profile guesses correctly on
-            # one session is the detector's business, measured properly over
+            # about the handshake; whether a cold profile scores well on one
+            # session is the detector's business, measured properly over
             # thousands of sessions in flowstate.detect. Asserting it here
             # would make an auth test fail for a detection reason.
+            findings = payload.get("findings")
             ok = (
-                isinstance(payload.get("friction_index"), int)
-                and 0 <= payload["friction_index"] < len(request.events)
-                and isinstance(payload.get("friction_kind"), str)
+                isinstance(findings, list)
+                and len(findings) <= MAX_FINDINGS
+                and all(
+                    isinstance(f.get("index"), int)
+                    and 0 <= f["index"] < len(request.events)
+                    and isinstance(f.get("kind"), str)
+                    and 0.0 <= f.get("confidence", 0.0) <= 1.0
+                    for f in findings
+                )
             )
-            correct = payload["friction_index"] == answer["friction_index"]
+            card = score_response(findings or [], answer["findings"])
             detail = (
-                f"well-formed index={payload['friction_index']} "
-                f"kind={payload['friction_kind']} "
-                f"conf={payload['confidence']:.2f} "
-                f"(truth {answer['friction_index']}, correct={correct})"
+                f"well-formed, {len(findings or [])} finding(s) vs "
+                f"{len(answer['findings'])} true, rubric {card.total:.2f}"
             )
         else:
             detail += f" {response.text[:120]}"

@@ -18,6 +18,7 @@ benign ceilings as constants and scoring a meaningless 100%.
 
 from __future__ import annotations
 
+import math
 import statistics
 from dataclasses import dataclass, field
 
@@ -25,11 +26,19 @@ from dataclasses import dataclass, field
 # a UI/chain disagreement has no benign explanation, while the behavioural
 # signals all have innocent versions whose ranges overlap the friction ones.
 SIGNAL_WEIGHTS: dict[str, float] = {
-    "desync": 6.0,
+    "desync": 12.0,
     "stall": 1.2,
     "error_loop": 1.5,
     "rage_click": 0.9,
 }
+
+# Count signals are zero-inflated: most steps show no retries and no rage
+# clicks at all. That breaks a quantile ceiling - when four fifths of samples
+# are 0 the 80th percentile is 0, and one benign retry clears it. Surprisal
+# measures how rare a value this high is for this step instead, in bits, which
+# handles the zeros correctly. This floor ignores anything commoner than about
+# one step in six.
+SURPRISAL_FLOOR = 2.5
 
 # Which friction kind each signal implies, when that signal is the strongest.
 SIGNAL_TO_KIND: dict[str, str] = {
@@ -42,21 +51,34 @@ SIGNAL_TO_KIND: dict[str, str] = {
 # Robust z below this is ordinary variation in how long a step takes.
 STALL_Z_FLOOR = 2.5
 
-# The quantile of observed values treated as the top of normal for a step.
+# How much lost time it takes before a human reads a wait as broken rather
+# than slow. A relative anomaly alone is not enough: a step whose normal dwell
+# is 800ms is five deviations slow at four seconds, and nobody abandons a swap
+# over four seconds. Scaling the stall signal by absolute time lost stops the
+# detector flagging short steps that merely wobbled, and stops a big z-score
+# from drowning out the desync signal and mislabelling the friction.
 #
-# Deliberately well below a conventional 0.95 or 0.99. Exactly one event per
-# session is corrupted, so for an eight-step flow roughly an eighth of the
-# samples recorded against any given step are friction. A ceiling at the 98th
-# percentile would sit *inside* that corrupted tail and quietly normalise the
-# very behaviour we are hunting for. 0.80 stays beneath the contamination.
-#
-# This follows from the shape of the task - one friction per session - and not
-# from any knowledge of the generator's actual numbers.
-BENIGN_QUANTILE = 0.80
+# This is a UX judgement about user patience, not a fact about the generator.
+USER_PATIENCE_MS = 10_000.0
 
-# Signals learned per step. Dwell is continuous and scored by robust z; the
-# other two are zero-inflated counts where median/MAD degenerates (median 0,
-# MAD 0), so they are scored as excess over a learned ceiling instead.
+# Weighted score an event must reach before this miner is willing to call it
+# broken. This is the miner's own risk appetite, not knowledge of the
+# generator: most sessions are clean, so a detector that reports its best
+# candidate regardless is wrong most of the time. Calibrated against the
+# signal weights - a desync alone (6.0) clears it easily, a single mild count
+# excess (1.5) does not.
+DECISION_THRESHOLD = 2.5
+
+# Self-imposed cap, below the protocol's MAX_FINDINGS. Reporting more than two
+# frictions in an eight-step flow is a claim this detector is never confident
+# enough to make.
+MAX_REPORTED = 3
+
+
+# Signals learned per step. Dwell is continuous and scored by robust z
+# weighted by absolute time lost; the other two are zero-inflated counts,
+# scored by surprisal because median/MAD and quantiles both degenerate on
+# a distribution that is mostly zeros.
 COUNT_FIELDS = ("retries", "rage_clicks")
 
 
@@ -70,21 +92,13 @@ class Finding:
     confidence: float               # margin over the runner-up
     signals: dict[str, float] = field(default_factory=dict)
 
-    def to_response(self) -> dict:
+    def to_wire(self) -> dict:
         """The subset actually sent back over the wire."""
         return {
-            "friction_index": self.friction_index,
-            "friction_kind": self.friction_kind,
+            "index": self.friction_index,
+            "kind": self.friction_kind,
             "confidence": round(self.confidence, 4),
         }
-
-
-def _quantile(sorted_samples: list[float], q: float) -> float:
-    """Nearest-rank quantile. No interpolation; these are small integer counts."""
-    if not sorted_samples:
-        return 0.0
-    index = int(q * (len(sorted_samples) - 1) + 0.5)
-    return float(sorted_samples[min(index, len(sorted_samples) - 1)])
 
 
 class StepProfile:
@@ -101,7 +115,7 @@ class StepProfile:
         # step -> field -> observed values
         self._samples: dict[str, dict[str, list[float]]] = {}
         self._dwell_cache: dict[str, tuple[float, float]] = {}
-        self._ceiling_cache: dict[tuple[str, str], float] = {}
+        self._surprisal_cache: dict[tuple[str, str, float], float] = {}
 
     def observe(self, challenge: dict) -> None:
         """Absorb a session. Contaminated events are fine and expected."""
@@ -111,7 +125,7 @@ class StepProfile:
             for name in COUNT_FIELDS:
                 per_field.setdefault(name, []).append(float(event.get(name, 0)))
         self._dwell_cache.clear()
-        self._ceiling_cache.clear()
+        self._surprisal_cache.clear()
 
     def ready(self, step: str) -> bool:
         per_field = self._samples.get(step)
@@ -138,19 +152,34 @@ class StepProfile:
             return 0.0
         return (dwell_ms - median) / scale
 
-    def ceiling(self, step: str, name: str) -> float:
-        """The learned top of normal for a count signal on this step."""
-        key = (step, name)
-        if key not in self._ceiling_cache:
-            samples = sorted(self._samples[step][name])
-            self._ceiling_cache[key] = _quantile(samples, BENIGN_QUANTILE)
-        return self._ceiling_cache[key]
-
-    def excess(self, step: str, name: str, value: float) -> float:
-        """How far past normal this count sits, 0.0 if within normal or unknown."""
+    def median_dwell(self, step: str) -> float:
+        """This step's normal dwell, 0.0 until the profile is ready."""
         if not self.ready(step):
             return 0.0
-        return max(0.0, value - self.ceiling(step, name))
+        self.robust_z(step, 0.0)        # populates the cache
+        return self._dwell_cache[step][0]
+
+    def surprisal(self, step: str, name: str, value: float) -> float:
+        """Bits of surprise at a count this high for this step, 0.0 if unknown.
+
+        Measures the empirical upper tail rather than a quantile, because
+        these fields are mostly zero and a quantile ceiling degenerates to 0.
+        Laplace smoothing keeps a finite sample from ever claiming infinite
+        surprise at a value it simply has not seen yet.
+        """
+        if not self.ready(step) or value <= 0:
+            return 0.0
+        key = (step, name, float(value))
+        if key not in self._surprisal_cache:
+            samples = self._samples[step][name]
+            at_least = sum(1 for sample in samples if sample >= value)
+            probability = (at_least + 1) / (len(samples) + 1)
+            self._surprisal_cache[key] = -math.log2(probability)
+        return self._surprisal_cache[key]
+
+    def excess(self, step: str, name: str, value: float) -> float:
+        """How far past normal a count sits, in bits above the surprisal floor."""
+        return max(0.0, self.surprisal(step, name, value) - SURPRISAL_FLOOR)
 
 
 def _event_signals(event: dict, profile: StepProfile) -> dict[str, float]:
@@ -170,10 +199,17 @@ def _event_signals(event: dict, profile: StepProfile) -> dict[str, float]:
     if event.get("ui_state") == "pending" and chain.get("status") == "confirmed":
         signals["desync"] = 1.0
 
-    # Unusually long for this particular step, not in absolute terms.
+    # Unusually long for this step AND long enough in absolute terms that a
+    # user would notice. Either test alone produces false positives: relative
+    # alone flags a short step that wobbled, absolute alone flags a chain wait
+    # that was always going to be slow.
     z = profile.robust_z(step, event["dwell_ms"])
     if z > STALL_Z_FLOOR:
-        signals["stall"] = z - STALL_Z_FLOOR
+        lost_ms = event["dwell_ms"] - profile.median_dwell(step)
+        attention = min(1.0, max(0.0, lost_ms) / USER_PATIENCE_MS)
+        strength = (z - STALL_Z_FLOOR) * attention
+        if strength > 0:
+            signals["stall"] = strength
 
     retries = profile.excess(step, "retries", event.get("retries", 0))
     if retries > 0:
@@ -186,54 +222,54 @@ def _event_signals(event: dict, profile: StepProfile) -> dict[str, float]:
     return signals
 
 
-def detect(challenge: dict, profile: StepProfile | None = None) -> Finding:
-    """Locate the friction point in one session.
+def analyse(challenge: dict, profile: StepProfile | None = None) -> list[Finding]:
+    """Report every step this session looks broken at - possibly none.
 
-    Picks the highest-scoring event, and names the friction after whichever
-    single signal contributed most to that score.
+    There is deliberately no fallback guess. An earlier version always named
+    its best candidate, because the task guaranteed exactly one friction per
+    session. Now most sessions are clean, so naming something regardless is
+    wrong more often than it is right, and the rubric charges for it. Silence
+    is an answer here.
+
+    Each finding is named after whichever single signal contributed most to
+    its score, and carries its own confidence - a miner can be certain about
+    one step and hesitant about another in the same session.
     """
     profile = profile if profile is not None else StepProfile()
-    events = challenge["events"]
 
-    scored: list[tuple[float, int, dict[str, float]]] = []
-    for event in events:
+    findings: list[Finding] = []
+    for event in challenge["events"]:
         signals = _event_signals(event, profile)
+        if not signals:
+            continue
         total = sum(SIGNAL_WEIGHTS[name] * value for name, value in signals.items())
-        scored.append((total, event["index"], signals))
-
-    scored.sort(key=lambda row: row[0], reverse=True)
-    best_score, best_index, best_signals = scored[0]
-    runner_up = scored[1][0] if len(scored) > 1 else 0.0
-
-    if best_signals:
+        if total < DECISION_THRESHOLD:
+            continue
         dominant = max(
-            best_signals,
-            key=lambda name: SIGNAL_WEIGHTS[name] * best_signals[name],
+            signals, key=lambda name: SIGNAL_WEIGHTS[name] * signals[name]
         )
-        kind = SIGNAL_TO_KIND[dominant]
-    else:
-        # Nothing stood out at all. Still has to answer, so take the slowest
-        # step and call it a stall - the least-wrong guess available.
-        best_index = max(events, key=lambda e: e["dwell_ms"])["index"]
-        kind = "stall"
+        findings.append(
+            Finding(
+                friction_index=event["index"],
+                friction_kind=SIGNAL_TO_KIND[dominant],
+                score=round(total, 4),
+                # Maps the score onto 0..1 through the threshold: exactly at
+                # the decision boundary this is 0.5, and it approaches 1 as
+                # the evidence piles up. Keeps confidence honest, which the
+                # calibration criterion then rewards.
+                confidence=total / (total + DECISION_THRESHOLD),
+                signals=signals,
+            )
+        )
 
-    # Confidence is the gap to the next candidate, normalised. A session with
-    # two plausible anomalies reports low confidence even when correct, which
-    # lets the validator weight by calibration and not just hits.
-    confidence = 0.0 if best_score <= 0 else (best_score - runner_up) / best_score
-
-    return Finding(
-        friction_index=best_index,
-        friction_kind=kind,
-        score=round(best_score, 4),
-        confidence=confidence,
-        signals=best_signals,
-    )
+    findings.sort(key=lambda finding: finding.score, reverse=True)
+    return findings[:MAX_REPORTED]
 
 
 if __name__ == "__main__":
     # Evaluation only - the miner itself never touches the generator.
-    from flowstate.telemetry import FRICTION_KINDS, SWAP_FLOW, generate_task
+    from flowstate.scoring import describe_rubric, score_response
+    from flowstate.telemetry import FRICTION_KINDS, generate_task
 
     CALIBRATION = range(0, 2_000)       # sessions the miner has already seen
     EVALUATION = range(50_000, 52_000)  # disjoint, so nothing is memorised
@@ -244,55 +280,57 @@ if __name__ == "__main__":
         challenge, _ = generate_task(seed=seed)
         warm.observe(challenge)
 
-    def evaluate(profile: StepProfile, kind: str | None = None) -> tuple[float, float]:
-        hits = 0
-        confidences = []
+    def profiled(challenge, profile):
+        return [finding.to_wire() for finding in analyse(challenge, profile)]
+
+    def cheat_ui(challenge, _profile):
+        """Name every event whose ui_state is not ok."""
+        return [
+            {"index": event["index"], "kind": "stall", "confidence": 0.8}
+            for event in challenge["events"] if event["ui_state"] != "ok"
+        ]
+
+    def cheat_slowest(challenge, _profile):
+        """Name the slowest step, always."""
+        event = max(challenge["events"], key=lambda e: e["dwell_ms"])
+        return [{"index": event["index"], "kind": "stall", "confidence": 0.8}]
+
+    def always_silent(challenge, _profile):
+        """Claim nothing, ever. Scores whatever fraction of sessions is clean."""
+        return []
+
+    def run(responder, profile=None, kind=None):
+        tally = {"total": 0.0, "loc": 0.0, "kind": 0.0, "cal": 0.0, "exact": 0}
         for seed in EVALUATION:
             challenge, answer = generate_task(seed=seed, kind=kind)
-            found = detect(challenge, profile)
-            hits += found.friction_index == answer["friction_index"]
-            confidences.append(found.confidence)
+            card = score_response(responder(challenge, profile), answer["findings"])
+            tally["total"] += card.total
+            tally["loc"] += card.localisation
+            tally["kind"] += card.kind
+            tally["cal"] += card.calibration
+            tally["exact"] += card.localisation == 1.0
         n = len(EVALUATION)
-        return hits / n, sum(confidences) / n
+        return (tally["total"] / n, tally["loc"] / n,
+                tally["kind"] / n, tally["cal"] / n, tally["exact"] / n)
 
-    def cheat_baseline() -> float:
-        """The lazy miner: answer "whichever event is not ui_state == ok".
-
-        Measured rather than quoted, so it tracks any change to the generator.
-        If this ever climbs back toward 1.0, a label has leaked again.
-        """
-        hits = 0
-        for seed in EVALUATION:
-            challenge, answer = generate_task(seed=seed)
-            guess = next(
-                (e["index"] for e in challenge["events"] if e["ui_state"] != "ok"),
-                None,
-            )
-            hits += guess == answer["friction_index"]
-        return hits / len(EVALUATION)
-
-    def slowest_baseline() -> float:
-        """The other lazy miner: answer "the slowest step"."""
-        hits = 0
-        for seed in EVALUATION:
-            challenge, answer = generate_task(seed=seed)
-            guess = max(challenge["events"], key=lambda e: e["dwell_ms"])["index"]
-            hits += guess == answer["friction_index"]
-        return hits / len(EVALUATION)
-
-    print(f"calibrated on {len(CALIBRATION)} sessions, "
+    print(describe_rubric())
+    print(f"\ncalibrated on {len(CALIBRATION)} sessions, "
           f"evaluated on {len(EVALUATION)} unseen\n")
 
-    cold_acc, cold_conf = evaluate(cold)
-    warm_acc, warm_conf = evaluate(warm)
-    print(f"{'detector':<28}{'accuracy':>10}{'mean conf':>12}")
-    print(f"{'calibrated':<28}{warm_acc:>10.1%}{warm_conf:>12.2f}")
-    print(f"{'cold (no history)':<28}{cold_acc:>10.1%}{cold_conf:>12.2f}")
-    print(f"{'cheat: first ui != ok':<28}{cheat_baseline():>10.1%}{'-':>12}")
-    print(f"{'cheat: slowest step':<28}{slowest_baseline():>10.1%}{'-':>12}")
-    print(f"{'random floor':<28}{1 / len(SWAP_FLOW):>10.1%}{'-':>12}")
+    rows = (
+        ("per-step profile, calibrated", profiled, warm),
+        ("per-step profile, cold", profiled, cold),
+        ("cheat: every non-ok ui_state", cheat_ui, None),
+        ("cheat: the slowest step", cheat_slowest, None),
+        ("cheat: claim nothing, ever", always_silent, None),
+    )
+    print(f"{'strategy':<32}{'SCORE':>8}{'loc':>7}{'kind':>7}{'calib':>8}{'perfect':>9}")
+    for label, responder, profile in rows:
+        total, loc, kinds, cal, exact = run(responder, profile)
+        print(f"{label:<32}{total:>8.3f}{loc:>7.2f}{kinds:>7.2f}"
+              f"{cal:>8.2f}{exact:>9.1%}")
 
-    print(f"\n{'friction kind':<28}{'accuracy':>10}")
+    print(f"\n{'friction kind (forced present)':<32}{'SCORE':>8}{'loc':>7}{'kind':>7}")
     for friction in FRICTION_KINDS:
-        accuracy, _ = evaluate(warm, kind=friction)
-        print(f"{friction:<28}{accuracy:>10.1%}")
+        total, loc, kinds, _, _ = run(profiled, warm, kind=friction)
+        print(f"{friction:<32}{total:>8.3f}{loc:>7.2f}{kinds:>7.2f}")

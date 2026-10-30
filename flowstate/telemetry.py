@@ -43,6 +43,16 @@ AWAIT_STEPS = ("token_approve", "confirm_swap", "tx_pending")
 
 FRICTION_KINDS = ("stall", "error_loop", "rage_click", "silent_failure")
 
+# How many friction points a session carries, and how often.
+#
+# Most real sessions are fine, and that is the point: when every session held
+# exactly one friction, a miner never had to decide *whether* anything was
+# wrong or *how many* things were. It named its best candidate and was right
+# almost always. Clean sessions make a false positive cost something, and
+# two-friction sessions stop "report the single highest score" from being a
+# complete strategy.
+FRICTION_COUNT_WEIGHTS: dict[int, float] = {0: 0.30, 1: 0.52, 2: 0.18}
+
 # Errors a swap UI realistically throws, keyed by the step they belong to.
 _STEP_ERRORS: dict[str, list[str]] = {
     "wallet_connect": ["ERR_NO_PROVIDER", "ERR_USER_REJECTED"],
@@ -247,18 +257,66 @@ def inject_friction(
     return index, kind
 
 
+def inject_frictions(
+    events: list[Event],
+    rng: random.Random,
+    count: int | None = None,
+    kind: str | None = None,
+) -> list[dict]:
+    """Inject zero or more friction points. Returns the ground truth.
+
+    Each injection lands on its own step, so two frictions never overwrite one
+    another's evidence. `silent_failure` is still restricted to the steps that
+    talk to the chain.
+
+    Passing `kind` forces that kind and guarantees at least one injection,
+    which is what the per-kind evaluations need; otherwise the count is drawn
+    from FRICTION_COUNT_WEIGHTS and may well be zero.
+    """
+    if count is None:
+        counts = tuple(FRICTION_COUNT_WEIGHTS)
+        count = rng.choices(counts, weights=tuple(FRICTION_COUNT_WEIGHTS.values()))[0]
+    if kind is not None and count == 0:
+        count = 1
+
+    taken: set[int] = set()
+    findings: list[dict] = []
+    for _ in range(count):
+        this_kind = kind if kind is not None else rng.choice(FRICTION_KINDS)
+        if this_kind == "silent_failure":
+            pool = [
+                event.index for event in events
+                if event.step in AWAIT_STEPS and event.index not in taken
+            ]
+        else:
+            pool = [i for i in range(len(events) - 1) if i not in taken]
+        if not pool:
+            break
+        index = rng.choice(pool)
+        inject_friction(events, rng, kind=this_kind, index=index)
+        taken.add(index)
+        findings.append({"index": index, "kind": this_kind})
+
+    _recompute_timeline(events)
+    findings.sort(key=lambda finding: finding["index"])
+    return findings
+
+
 def generate_task(
     seed: int | None = None,
     kind: str | None = None,
+    count: int | None = None,
 ) -> tuple[dict, dict]:
     """Produce one (challenge, answer) pair.
 
     The challenge is what gets sent to miners. The answer stays with the
-    validator and is used to score the responses that come back.
+    validator and is used to score the responses that come back. `findings`
+    may be empty: a clean session is a legitimate question, and answering it
+    with a confident guess should cost a miner something.
     """
     rng = random.Random(seed)
     events = _healthy_events(rng)
-    friction_index, friction_kind = inject_friction(events, rng, kind=kind)
+    findings = inject_frictions(events, rng, count=count, kind=kind)
 
     challenge = {
         "session_id": str(uuid.UUID(int=rng.getrandbits(128), version=4)),
@@ -266,7 +324,7 @@ def generate_task(
         "steps": [step for step, _, _ in SWAP_FLOW],
         "events": [asdict(event) for event in events],
     }
-    answer = {"friction_index": friction_index, "friction_kind": friction_kind}
+    answer = {"findings": findings}
     return challenge, answer
 
 
@@ -288,7 +346,7 @@ def generate_organic(seed: int | None = None) -> dict:
 
 def render_session(challenge: dict, answer: dict | None = None) -> str:
     """Human-readable dump of a session, for eyeballing what we generate."""
-    marked = answer["friction_index"] if answer else None
+    marked = {f["index"] for f in answer["findings"]} if answer else set()
     header = (
         f"   {'step':<16}{'t_ms':>8}{'dwell':>8}{'retry':>7}{'rage':>6}"
         f"  {'ui':<8}{'chain':<11}errors"
@@ -298,7 +356,7 @@ def render_session(challenge: dict, answer: dict | None = None) -> str:
         header,
     ]
     for event in challenge["events"]:
-        flag = "-> " if event["index"] == marked else "   "
+        flag = "-> " if event["index"] in marked else "   "
         errors = ",".join(event["errors"][:1]) or "-"
         if len(event["errors"]) > 1:
             errors += f" (x{len(event['errors'])})"
@@ -309,11 +367,14 @@ def render_session(challenge: dict, answer: dict | None = None) -> str:
             f"  {event['ui_state']:<8}{chain:<11}{errors}"
         )
     if answer:
-        step = challenge["events"][answer["friction_index"]]["step"]
-        lines.append(
-            f"   ground truth: index {answer['friction_index']} "
-            f"({answer['friction_kind']}) at step '{step}'"
-        )
+        if not answer["findings"]:
+            lines.append("   ground truth: clean session, no friction injected")
+        for finding in answer["findings"]:
+            step = challenge["events"][finding["index"]]["step"]
+            lines.append(
+                f"   ground truth: index {finding['index']} "
+                f"({finding['kind']}) at step '{step}'"
+            )
     return "\n".join(lines)
 
 
@@ -326,27 +387,30 @@ if __name__ == "__main__":
 
     print("\n=== what a miner receives for one await step ===")
     challenge, answer = generate_task(seed=7, kind="silent_failure")
-    print(json.dumps(challenge["events"][answer["friction_index"]], indent=2))
+    print(json.dumps(challenge["events"][answer["findings"][0]["index"]], indent=2))
+
+    print("\n=== how many frictions per session ===")
+    counts: dict[int, int] = {}
+    for seed in range(2_000):
+        _, answer = generate_task(seed=seed)
+        n = len(answer["findings"])
+        counts[n] = counts.get(n, 0) + 1
+    for n in sorted(counts):
+        print(f"  {n} friction(s): {counts[n] / 2_000:.1%}")
 
     # The label-leak check. A cheating miner answers "whichever event isn't
     # ui_state == ok" and does no analysis at all. If that scores well, the
     # generator is tagging its own answers and the subnet measures nothing.
     # This stays in as a regression test: if it ever climbs back toward 1.0,
     # a label has leaked into the challenge again.
-    print("\n=== naive baseline: first event with ui_state != 'ok' ===")
+    print("\n=== label-leak check: the set of events with ui_state != 'ok' ===")
     trials = 2_000
-    hits = 0
-    guessable = 0
+    exact = 0
     for seed in range(trials):
         challenge, answer = generate_task(seed=seed)
-        guess = next(
-            (e["index"] for e in challenge["events"] if e["ui_state"] != "ok"),
-            None,
-        )
-        if guess is not None:
-            guessable += 1
-            hits += guess == answer["friction_index"]
-    print(f"  sessions            : {trials}")
-    print(f"  cheat rule fired on : {guessable} ({guessable / trials:.0%})")
-    print(f"  accuracy            : {hits / trials:.1%}")
-    print(f"  random-guess floor  : {1 / len(SWAP_FLOW):.1%}")
+        guess = {e["index"] for e in challenge["events"] if e["ui_state"] != "ok"}
+        truth = {finding["index"] for finding in answer["findings"]}
+        exact += guess == truth
+    print(f"  sessions          : {trials}")
+    print(f"  exact set match   : {exact / trials:.1%}")
+    print("  (if this climbs toward 100%, a label has leaked into the challenge)")

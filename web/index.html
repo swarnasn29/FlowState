@@ -15,129 +15,176 @@
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; background: var(--concrete); color: var(--ink);
-    font-family: var(--mono); font-size: 15px; line-height: 1.5;
-    padding: 20px;
+    margin: 0; padding: 16px; background: var(--concrete); color: var(--ink);
+    font-family: var(--mono); font-size: 14px; line-height: 1.45;
   }
   h1, h2, h3 { font-family: var(--display); text-transform: uppercase; margin: 0; letter-spacing: -0.02em; }
-  h1 { font-size: clamp(2rem, 5vw, 3.2rem); line-height: 0.95; }
-  h2 { font-size: 1.35rem; }
-  h3 { font-size: 1rem; }
-  .wrap { max-width: 1320px; margin-inline: auto; display: flex; flex-direction: column; gap: 18px; }
-  .bar { display: flex; flex-wrap: wrap; gap: 14px; align-items: baseline; justify-content: space-between; }
-  .eyebrow { font-weight: 700; font-size: .72rem; letter-spacing: .34em; text-transform: uppercase; color: var(--blue); }
-  .cols { display: grid; grid-template-columns: 1.55fr 1fr; gap: 18px; align-items: start; }
-  @media (max-width: 920px) { .cols { grid-template-columns: 1fr; } }
+  h1 { font-size: clamp(1.5rem, 3.2vw, 2.1rem); line-height: 1; }
+  h2 { font-size: 1.05rem; }
+  h3 { font-size: .9rem; }
+  .wrap { max-width: 1500px; margin-inline: auto; display: flex; flex-direction: column; gap: 14px; }
 
-  .slab { background: var(--slab); border: 6px solid var(--ink); box-shadow: 10px 10px 0 var(--ink); padding: 20px; min-width: 0; }
+  /* ---------- the framing line: what am I even looking at ---------- */
+  .frame {
+    border: 6px solid var(--ink); background: var(--ink); color: var(--paper);
+    padding: 14px 18px; display: flex; flex-wrap: wrap; gap: 14px;
+    align-items: center; justify-content: space-between;
+  }
+  .frame p { margin: 0; max-width: 72ch; font-size: .88rem; }
+  .frame b { color: var(--acid); }
+
+  /* ---------- three lanes ---------- */
+  .lanes { display: grid; grid-template-columns: 1.15fr 1.25fr 1fr; gap: 14px; align-items: start; }
+  @media (max-width: 1100px) { .lanes { grid-template-columns: 1fr; } }
+  .lane { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .laneHead {
+    border: 6px solid var(--ink); background: var(--paper);
+    padding: 10px 14px; display: flex; align-items: baseline; gap: 10px;
+  }
+  .laneNo { font-family: var(--display); font-size: 1.5rem; line-height: 1; }
+  .laneHead .t { font-family: var(--display); font-size: .92rem; text-transform: uppercase; }
+  .laneHead .s { font-size: .72rem; color: var(--dim); margin-left: auto; text-align: right; }
+  .lane1 .laneHead { background: var(--acid); }
+  .lane2 .laneHead { background: var(--paper); }
+  .lane3 .laneHead { background: var(--blue); color: var(--paper); }
+  .lane3 .laneHead .s { color: #cfe0ff; }
+
+  .slab { background: var(--slab); border: 6px solid var(--ink); box-shadow: 8px 8px 0 var(--ink); padding: 16px; min-width: 0; }
   .slab.paper { background: var(--paper); }
-  .slab.blue { background: var(--blue); color: var(--paper); }
   .slab.acid { background: var(--acid); }
   .slab.siren { background: var(--siren); color: var(--paper); }
 
+  /* ---------- lane 1: the dApp ---------- */
+  .crumbs { display: flex; flex-wrap: wrap; gap: 4px; }
+  .crumb { font-size: .62rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+           border: 2px solid var(--ink); padding: 3px 6px; background: var(--paper); }
+  .crumb.done { background: var(--ink); color: var(--acid); }
+  .crumb.now { background: var(--blue); color: var(--paper); }
+  .screen { display: flex; flex-direction: column; gap: 12px; min-height: 250px; }
+  .screen .big { font-family: var(--display); font-size: 1.5rem; line-height: 1.05; }
+  .screen .sub { font-size: .8rem; color: var(--dim); }
+  .ctrls { display: flex; flex-wrap: wrap; gap: 8px; }
   button {
-    font-family: var(--mono); font-weight: 700; font-size: .95rem;
-    letter-spacing: .1em; text-transform: uppercase;
-    border: 5px solid var(--ink); background: var(--acid); color: var(--ink);
-    padding: 16px 26px; cursor: pointer; box-shadow: 7px 7px 0 var(--ink);
+    font-family: var(--mono); font-weight: 700; font-size: .82rem;
+    letter-spacing: .08em; text-transform: uppercase;
+    border: 4px solid var(--ink); background: var(--acid); color: var(--ink);
+    padding: 11px 16px; cursor: pointer; box-shadow: 5px 5px 0 var(--ink);
   }
-  button:active { transform: translate(3px, 3px); box-shadow: 4px 4px 0 var(--ink); }
-  button[disabled] { background: var(--slab); color: var(--dim); cursor: not-allowed; }
-  button.ghost { background: transparent; box-shadow: none; border-width: 3px; padding: 9px 14px; font-size: .78rem; }
-
-  .steps { display: flex; flex-wrap: wrap; gap: 6px; }
-  .pip { font-size: .68rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
-         border: 3px solid var(--ink); padding: 5px 8px; background: var(--paper); }
-  .pip.done { background: var(--ink); color: var(--acid); }
-  .pip.now { background: var(--blue); color: var(--paper); }
-
-  .screen { display: flex; flex-direction: column; gap: 14px; min-height: 216px; justify-content: center; }
-  .big { font-family: var(--display); font-size: clamp(1.6rem, 4vw, 2.6rem); line-height: 1; }
-  .meta { font-size: .8rem; color: var(--dim); }
-  .err { background: var(--siren); color: var(--paper); border: 4px solid var(--ink); padding: 10px 14px; font-weight: 700; }
+  button.second { background: var(--paper); }
+  button:active { transform: translate(2px, 2px); box-shadow: 3px 3px 0 var(--ink); }
+  button[disabled] { background: var(--slab); color: var(--dim); cursor: not-allowed; box-shadow: 5px 5px 0 var(--dim); }
+  button.ghost { background: transparent; box-shadow: none; border-width: 2px; padding: 6px 10px; font-size: .7rem; }
+  input[type=text] {
+    font-family: var(--mono); font-size: 1.1rem; font-weight: 700;
+    border: 4px solid var(--ink); background: var(--paper); color: var(--ink);
+    padding: 10px 12px; width: 100%; max-width: 230px;
+  }
+  .note { border: 3px solid var(--ink); background: var(--paper); padding: 8px 11px; font-size: .78rem; }
+  .note.bad { background: var(--siren); color: var(--paper); font-weight: 700; }
   .spin { display: inline-block; animation: sp 1s linear infinite; }
   @keyframes sp { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
 
-  table { border-collapse: collapse; width: 100%; font-size: .82rem; }
-  th, td { border: 3px solid var(--ink); padding: 7px 9px; text-align: left; }
-  th { background: var(--ink); color: var(--acid); font-size: .66rem; letter-spacing: .12em; text-transform: uppercase; }
+  /* ---------- lane 2: telemetry ---------- */
+  table { border-collapse: collapse; width: 100%; font-size: .74rem; }
+  th, td { border: 2px solid var(--ink); padding: 5px 7px; text-align: left; white-space: nowrap; }
+  th { background: var(--ink); color: var(--acid); font-size: .6rem; letter-spacing: .1em; text-transform: uppercase; }
   td.n { text-align: right; font-variant-numeric: tabular-nums; }
-  tr.me td { background: var(--paper); }
-
-  .chip { display: inline-block; font-weight: 700; font-size: .72rem; letter-spacing: .14em;
-          text-transform: uppercase; border: 4px solid var(--ink); padding: 6px 12px; background: var(--paper); }
-  .chip.armed { background: var(--siren); color: var(--paper); }
-  .verdict { display: flex; flex-direction: column; gap: 10px; }
-  .vrow { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; border: 4px solid var(--ink); padding: 11px 14px; background: var(--paper); }
-  .vrow.hit { background: var(--acid); }
-  .vrow .who { font-family: var(--display); font-size: .95rem; width: 110px; }
+  tr.live td { background: var(--blue); color: var(--paper); font-weight: 700; }
+  tr.pend td { background: #ffe9c9; }
+  td.unknown { color: var(--dim); font-style: italic; }
+  td.flash { animation: fl 1.1s ease-out 1; }
+  @keyframes fl { 0% { background: var(--acid); } 100% { background: transparent; } }
   .scroll { overflow-x: auto; }
-  code { font-family: var(--mono); }
+
+  /* ---------- lane 3 ---------- */
+  .vrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+          border: 3px solid var(--ink); padding: 9px 11px; background: var(--paper); font-size: .78rem; }
+  .vrow.hit { background: var(--acid); }
+  .vrow .who { font-family: var(--display); font-size: .82rem; width: 92px; }
+  .chip { display: inline-block; font-weight: 700; font-size: .68rem; letter-spacing: .12em;
+          text-transform: uppercase; border: 3px solid var(--ink); padding: 5px 9px; background: var(--paper); }
+  .chip.armed { background: var(--siren); color: var(--paper); }
+  .keys { font-size: .7rem; color: var(--dim); }
+  @media (prefers-reduced-motion: reduce) { .spin, td.flash { animation: none; } }
 </style>
 </head>
 <body>
 <div class="wrap">
 
-  <div class="bar">
+  <div class="frame">
     <div>
-      <p class="eyebrow">FlowState · live organic telemetry</p>
-      <h1>Swap something</h1>
+      <h1>You are using a dApp. A subnet is watching.</h1>
+      <p>Click through the swap on the left. Lane&nbsp;2 is the telemetry your clicks produce —
+        <b>real dwell times, real retries, real rage clicks</b>. The chain column stays unknown,
+        because a web page cannot see it. On submit the gateway fills it in and the miners in
+        lane&nbsp;3 say where you hit friction.</p>
     </div>
     <div style="text-align:right">
       <span class="chip" id="armChip">armed: none</span>
-      <p class="meta" style="margin:6px 0 0">press <b>0</b> none · <b>1</b> stall · <b>2</b> error_loop · <b>3</b> rage_click · <b>4</b> silent_failure</p>
+      <p class="keys" style="margin:6px 0 0">press <b>0</b> none · <b>1</b> stall · <b>2</b> error_loop · <b>3</b> rage_click · <b>4</b> silent_failure</p>
     </div>
   </div>
 
-  <div class="cols">
+  <div class="lanes">
 
-    <!-- ------------------------------------------------ the fake dApp -->
-    <div style="display:flex;flex-direction:column;gap:14px">
-      <div class="slab paper">
-        <div class="steps" id="pips"></div>
+    <!-- ======================= LANE 1 ======================= -->
+    <div class="lane lane1">
+      <div class="laneHead">
+        <span class="laneNo">1</span>
+        <span class="t">You, using a dApp</span>
+        <span class="s" id="stepCount">step 1 / 8</span>
       </div>
+      <div class="slab paper"><div class="crumbs" id="crumbs"></div></div>
+      <div class="slab"><div class="screen" id="screen"></div></div>
+    </div>
 
-      <div class="slab" id="stage">
-        <div class="screen" id="screen"></div>
+    <!-- ======================= LANE 2 ======================= -->
+    <div class="lane lane2">
+      <div class="laneHead">
+        <span class="laneNo">2</span>
+        <span class="t">What it records</span>
+        <span class="s" id="recCount">0 events</span>
       </div>
-
       <div class="slab paper">
-        <h3>What this is recording</h3>
         <div class="scroll">
-          <table id="recTable">
-            <thead><tr><th>step</th><th class="n">dwell ms</th><th class="n">retry</th><th class="n">rage</th><th>ui</th></tr></thead>
+          <table>
+            <thead><tr>
+              <th>step</th><th class="n">dwell</th><th class="n">retry</th>
+              <th class="n">rage</th><th>ui</th><th>chain</th>
+            </tr></thead>
             <tbody id="recBody"></tbody>
           </table>
         </div>
-        <p class="meta" style="margin-top:8px">Real dwell times and click counts from this browser. The chain half is added by the gateway, because a page cannot see it.</p>
+        <p class="sub" id="chainNote" style="margin:9px 0 0">
+          The <b>chain</b> column is unknown to this page. The gateway adds it — that half is the
+          whole reason this is a subnet and not a session recorder.
+        </p>
       </div>
     </div>
 
-    <!-- ------------------------------------------------ subnet panel -->
-    <div style="display:flex;flex-direction:column;gap:14px">
-      <div class="slab blue">
-        <p class="eyebrow" style="color:var(--acid)">On chain</p>
-        <h2 id="subnetName">netuid …</h2>
-        <p class="meta" style="color:#cfe0ff" id="subnetMeta">reading metagraph…</p>
+    <!-- ======================= LANE 3 ======================= -->
+    <div class="lane lane3">
+      <div class="laneHead">
+        <span class="laneNo">3</span>
+        <span class="t">The subnet</span>
+        <span class="s" id="chainMeta">reading chain…</span>
       </div>
-
       <div class="slab paper">
-        <h3>Neurons &amp; revealed weight</h3>
-        <div class="scroll">
-          <table id="chainTable">
-            <thead><tr><th>uid</th><th>hotkey</th><th>axon</th><th class="n">weight</th></tr></thead>
+        <h3 id="subnetName">netuid …</h3>
+        <div class="scroll" style="margin-top:8px">
+          <table>
+            <thead><tr><th>uid</th><th>role</th><th>axon</th><th class="n">weight</th></tr></thead>
             <tbody id="chainBody"><tr><td colspan="4">loading…</td></tr></tbody>
           </table>
         </div>
-        <p class="meta" style="margin-top:8px">Weight is the subnet's actual ranking as the chain reports it, not a figure computed here.</p>
+        <p class="sub" style="margin:9px 0 0">Weight is the ranking the <b>chain</b> reports, not a
+          number computed here.</p>
       </div>
-
       <div class="slab acid" id="verdictSlab" hidden>
-        <p class="eyebrow">Miner reports</p>
-        <h2>What the subnet says</h2>
-        <div class="verdict" id="verdicts" style="margin-top:12px"></div>
-        <p class="meta" style="margin-top:12px;color:#4a4f1f"><b>Not scored.</b> Organic sessions never touch weights — there is no answer key for real traffic.</p>
+        <h3 id="verdictHead">What the subnet says</h3>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px" id="verdicts"></div>
+        <p class="sub" style="margin:10px 0 0;color:#4a4f1f"><b>Not scored.</b> Organic sessions
+          never touch weights — there is no answer key for real traffic.</p>
       </div>
     </div>
   </div>
@@ -145,38 +192,42 @@
 
 <script>
 (function () {
-  var STEPS = [];
-  var AWAIT = [];
+  var STEPS = [], AWAIT = [];
   var armKind = null, armStep = null;
-  var i = 0, rec = [], enteredAt = 0, clicks = 0, retries = 0, busy = false;
+  var i = 0, rec = [], enteredAt = 0, dead = 0, retries = 0, busy = false, ticker = null;
 
-  var screen = document.getElementById('screen');
-  var pips = document.getElementById('pips');
-  var recBody = document.getElementById('recBody');
-  var armChip = document.getElementById('armChip');
+  var $ = function (id) { return document.getElementById(id); };
+  var screen = $('screen'), crumbs = $('crumbs'), recBody = $('recBody');
 
-  // Copy-ish of the real flow's shape, enough that a click-through produces
-  // plausible per-step behaviour. The step NAMES must match SWAP_FLOW exactly
-  // or the miners' per-step profiles are meaningless.
-  var COPY = {
-    wallet_connect: ['Connect wallet', 'Connect'],
-    select_pair:    ['Choose a pair', 'USDC → ETH'],
-    input_amount:   ['How much?', 'Use max'],
-    quote_received: ['Quote', 'Accept quote'],
-    token_approve:  ['Approve USDC', 'Approve'],
-    confirm_swap:   ['Confirm swap', 'Confirm'],
-    tx_pending:     ['Submitting', 'Waiting…'],
-    tx_success:     ['Done', 'Finish']
+  // Human copy on the left, technical step name on the right. The pairing is
+  // the thing that makes the page legible: you see "Approve USDC" and
+  // token_approve light up at the same moment.
+  var UI = {
+    wallet_connect: { title: 'Connect a wallet', sub: 'FlowSwap needs an address to quote against.',
+                      ctrls: [['MetaMask', 'go'], ['WalletConnect', 'go']] },
+    select_pair:    { title: 'Choose a pair', sub: 'Liquidity is deepest on the stable pairs.',
+                      ctrls: [['USDC → ETH', 'go'], ['ETH → USDC', 'go']] },
+    input_amount:   { title: 'How much?', sub: 'Balance 4,812.50 USDC',
+                      input: true, ctrls: [['Get quote', 'go'], ['25%', 'fill'], ['50%', 'fill'], ['Max', 'fill']] },
+    quote_received: { title: '1 ETH ≈ 3,094.20 USDC', sub: 'Quote valid for 30 seconds · slippage 0.5%',
+                      ctrls: [['Accept quote', 'go'], ['Refresh', 'soft']] },
+    token_approve:  { title: 'Approve USDC', sub: 'One-time allowance so the router can move your USDC.',
+                      ctrls: [['Approve', 'go'], ['Reject', 'reject']] },
+    confirm_swap:   { title: 'Confirm swap', sub: '1,000.00 USDC → 0.3232 ETH · network fee ~0.0004 ETH',
+                      ctrls: [['Confirm swap', 'go'], ['Edit amount', 'soft']] },
+    tx_pending:     { title: 'Submitting to the network', sub: 'Waiting for the transaction to settle.',
+                      ctrls: [['View on explorer', 'soft'], ['Done', 'go']] },
+    tx_success:     { title: 'Swapped', sub: '0.3232 ETH is in your wallet.',
+                      ctrls: [['Finish', 'go']] }
   };
 
   function setArm(kind) {
     armKind = kind;
-    if (!kind) { armStep = null; armChip.textContent = 'armed: none'; armChip.className = 'chip'; return; }
-    // silent_failure only makes sense where the chain is involved.
+    if (!kind) { armStep = null; $('armChip').textContent = 'armed: none'; $('armChip').className = 'chip'; return; }
     var pool = (kind === 'silent_failure') ? AWAIT : STEPS.slice(0, STEPS.length - 1);
     armStep = pool[Math.floor(Math.random() * pool.length)];
-    armChip.textContent = 'armed: ' + kind + ' @ ' + armStep;
-    armChip.className = 'chip armed';
+    $('armChip').textContent = 'armed: ' + kind + ' @ ' + armStep;
+    $('armChip').className = 'chip armed';
   }
 
   document.addEventListener('keydown', function (e) {
@@ -184,171 +235,197 @@
     if (e.key in map) setArm(map[e.key]);
   });
 
-  function drawPips() {
-    pips.innerHTML = '';
-    STEPS.forEach(function (s, k) {
-      var el = document.createElement('span');
-      el.className = 'pip' + (k < i ? ' done' : k === i ? ' now' : '');
-      el.textContent = s;
-      pips.appendChild(el);
-    });
+  function drawCrumbs() {
+    crumbs.innerHTML = STEPS.map(function (s, k) {
+      return '<span class="crumb' + (k < i ? ' done' : k === i ? ' now' : '') + '">' + s + '</span>';
+    }).join('');
+    $('stepCount').textContent = 'step ' + Math.min(i + 1, STEPS.length) + ' / ' + STEPS.length;
   }
 
-  function drawRec() {
-    recBody.innerHTML = rec.map(function (r) {
-      return '<tr><td>' + r.step + '</td><td class="n">' + r.dwell_ms +
-             '</td><td class="n">' + r.retries + '</td><td class="n">' + r.rage_clicks +
-             '</td><td>' + r.ui_state + '</td></tr>';
-    }).join('') || '<tr><td colspan="5">nothing yet</td></tr>';
+  function row(r, cls) {
+    var chain = r.chain === undefined
+      ? (AWAIT.indexOf(r.step) >= 0 ? '<td class="unknown">?? hidden</td>' : '<td class="unknown">—</td>')
+      : '<td class="' + (r.flash ? 'flash ' : '') + '"><b>' + r.chain + '</b></td>';
+    return '<tr class="' + (cls || '') + '"><td>' + r.step + '</td>' +
+           '<td class="n">' + (r.dwell_ms / 1000).toFixed(1) + 's</td>' +
+           '<td class="n">' + r.retries + '</td><td class="n">' + r.rage_clicks + '</td>' +
+           '<td>' + r.ui_state + '</td>' + chain + '</tr>';
   }
+
+  function drawRec(liveRow) {
+    var html = rec.map(function (r) { return row(r, r.ui_state === 'pending' ? 'pend' : ''); }).join('');
+    if (liveRow) html += row(liveRow, 'live');
+    recBody.innerHTML = html || '<tr><td colspan="6">nothing yet — start clicking</td></tr>';
+    $('recCount').textContent = rec.length + (rec.length === 1 ? ' event' : ' events');
+  }
+
+  function liveSnapshot(uiState) {
+    return { step: STEPS[i], dwell_ms: Date.now() - enteredAt, retries: retries,
+             rage_clicks: dead, ui_state: uiState || 'ok' };
+  }
+
+  function startTicker(uiState) {
+    stopTicker();
+    ticker = setInterval(function () { drawRec(liveSnapshot(uiState)); }, 200);
+  }
+  function stopTicker() { if (ticker) { clearInterval(ticker); ticker = null; } }
 
   function enter() {
-    enteredAt = Date.now(); clicks = 0; retries = 0; busy = false;
-    drawPips();
-    var step = STEPS[i];
-    var copy = COPY[step] || [step, 'Continue'];
+    enteredAt = Date.now(); dead = 0; retries = 0; busy = false;
+    drawCrumbs();
+    var step = STEPS[i], ui = UI[step] || { title: step, ctrls: [['Continue', 'go']] };
     screen.innerHTML =
-      '<p class="eyebrow">step ' + (i + 1) + ' / ' + STEPS.length + ' · ' + step + '</p>' +
-      '<div class="big">' + copy[0] + '</div>' +
+      '<p class="sub" style="letter-spacing:.2em;text-transform:uppercase"><b>' + step + '</b></p>' +
+      '<div class="big">' + ui.title + '</div>' +
+      '<div class="sub">' + (ui.sub || '') + '</div>' +
+      (ui.input ? '<div><input type="text" id="amt" value="1000.00" aria-label="Amount"></div>' : '') +
       '<div id="slot"></div>' +
-      '<div><button id="go">' + copy[1] + '</button></div>' +
-      '<p class="meta" id="hint"></p>';
-    document.getElementById('go').addEventListener('click', onGo);
+      '<div class="ctrls" id="ctrls"></div>';
+    var box = $('ctrls');
+    ui.ctrls.forEach(function (c, n) {
+      var b = document.createElement('button');
+      b.textContent = c[0];
+      if (n > 0) b.className = 'second';
+      b.addEventListener('click', function () { onClick(c[1], c[0]); });
+      box.appendChild(b);
+    });
+    startTicker('ok');
   }
 
-  function finishStep(uiState) {
-    rec.push({
-      step: STEPS[i],
-      dwell_ms: Date.now() - enteredAt,
-      retries: retries,
-      rage_clicks: Math.max(0, clicks - 1),
-      ui_state: uiState || 'ok'
-    });
-    drawRec();
+  function finish(uiState) {
+    stopTicker();
+    rec.push(liveSnapshot(uiState));
     i++;
+    drawRec();
     if (i >= STEPS.length) { send(); } else { enter(); }
   }
 
-  function onGo() {
-    clicks++;
-    if (busy) return;                       // extra clicks here are rage clicks
-    var step = STEPS[i];
-    var armedHere = (armKind && armStep === step);
+  function onClick(kind, label) {
+    var step = STEPS[i], armedHere = (armKind && armStep === step);
+    var slot = $('slot');
 
-    if (!armedHere) { finishStep('ok'); return; }
+    if (busy) { dead++; return; }        // clicks during a dead wait are rage clicks
 
-    var slot = document.getElementById('slot');
-    var go = document.getElementById('go');
-    var hint = document.getElementById('hint');
-
-    if (armKind === 'stall' || armKind === 'silent_failure') {
-      // A real wait, so the dwell time recorded is genuinely long.
-      busy = true;
-      go.disabled = true;
-      slot.innerHTML = '<div class="big"><span class="spin">◴</span> pending</div>';
-      hint.textContent = 'click anywhere you like — it will not help';
-      var wait = armKind === 'stall' ? 11000 : 21000;
-      setTimeout(function () { busy = false; finishStep('pending'); }, wait);
+    if (kind === 'fill') {
+      var amt = $('amt');
+      if (amt) amt.value = label === 'Max' ? '4812.50' : label === '50%' ? '2406.25' : '1203.13';
+      slot.innerHTML = '<div class="note">amount set to ' + (amt ? amt.value : '') + '</div>';
+      return;                            // real interaction, does not advance
+    }
+    if (kind === 'soft') {
+      slot.innerHTML = '<div class="note">' + label + ' — nothing to do yet, the clock keeps running</div>';
       return;
     }
+    if (kind === 'reject') {
+      retries++;
+      slot.innerHTML = '<div class="note bad">You rejected the allowance. The swap cannot proceed without it.</div>';
+      return;                            // a real retry, recorded as one
+    }
 
+    if (!armedHere) { finish('ok'); return; }
+
+    if (armKind === 'stall' || armKind === 'silent_failure') {
+      busy = true;
+      Array.prototype.forEach.call($('ctrls').children, function (b) { b.disabled = true; });
+      slot.innerHTML = '<div class="note"><span class="spin">◴</span> pending — waiting for the network</div>';
+      startTicker('pending');
+      setTimeout(function () { busy = false; finish('pending'); },
+                 armKind === 'stall' ? 11000 : 21000);
+      return;
+    }
     if (armKind === 'error_loop') {
       retries++;
       if (retries < 4) {
-        slot.innerHTML = '<div class="err">ERR_INSUFFICIENT_ALLOWANCE — try again</div>';
-        hint.textContent = 'attempt ' + retries + ' failed';
+        slot.innerHTML = '<div class="note bad">ERR_INSUFFICIENT_ALLOWANCE — attempt ' + retries + ' failed</div>';
+        startTicker('error');
         return;
       }
-      finishStep('error');
+      finish('error');
       return;
     }
-
     if (armKind === 'rage_click') {
-      if (clicks < 7) {
-        slot.innerHTML = '<div class="meta">…</div>';
-        hint.textContent = 'nothing appears to be happening';
+      dead++;
+      if (dead < 6) {
+        slot.innerHTML = '<div class="note">…nothing appears to be happening</div>';
         return;
       }
-      finishStep('ok');
+      finish('ok');
       return;
     }
-
-    finishStep('ok');
+    finish('ok');
   }
 
   function send() {
-    screen.innerHTML = '<div class="big"><span class="spin">◴</span> asking the subnet…</div>' +
-                       '<p class="meta">relaying this session to every miner over signed HTTP</p>';
+    screen.innerHTML = '<div class="big"><span class="spin">◴</span> asking the subnet</div>' +
+      '<p class="sub">relaying this session to every miner over signed HTTP</p>';
     fetch('/api/ingest', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ events: rec, flow: 'token_swap', arm_kind: armKind, arm_step: armStep })
-    })
-      .then(function (r) { return r.json(); })
-      .then(showVerdicts)
-      .catch(function (e) {
-        screen.innerHTML = '<div class="err">gateway unreachable: ' + e.message + '</div>';
-      });
+    }).then(function (r) { return r.json(); }).then(reveal).catch(function (e) {
+      screen.innerHTML = '<div class="note bad">gateway unreachable: ' + e.message + '</div>';
+    });
   }
 
-  function showVerdicts(data) {
-    var truth = (data.armed_truth || [])[0] || null;
-    var slab = document.getElementById('verdictSlab');
-    var box = document.getElementById('verdicts');
-    slab.hidden = false;
+  function reveal(data) {
+    // The moment the page has been withholding: the chain half arrives.
+    rec = (data.events || []).map(function (e) {
+      return { step: e.step, dwell_ms: e.dwell_ms, retries: e.retries,
+               rage_clicks: e.rage_clicks, ui_state: e.ui_state,
+               chain: e.chain ? e.chain.status : '—', flash: !!e.chain };
+    });
+    drawRec();
+    $('chainNote').innerHTML = 'The <b>chain</b> column just arrived from the gateway. ' +
+      'A step reading <b>pending</b> against <b>confirmed</b> is a transaction that settled ' +
+      'while the interface never said so — invisible to any UI-only tool.';
 
-    box.innerHTML = (data.verdicts || []).map(function (v) {
-      var found = (v.findings || []);
+    var truth = (data.armed_truth || [])[0] || null;
+    $('verdictSlab').hidden = false;
+    $('verdictHead').textContent = truth
+      ? 'armed ' + truth.kind + ' @ ' + truth.step
+      : 'nothing armed — a plain session';
+    $('verdicts').innerHTML = (data.verdicts || []).map(function (v) {
+      var found = v.findings || [];
       var hit = truth && found.some(function (f) { return f.index === truth.index; });
-      var text = found.length
-        ? found.map(function (f) {
-            return 'step ' + f.index + ' <b>' + f.kind + '</b> @ ' + Number(f.confidence).toFixed(2);
-          }).join(' · ')
-        : '<i>no friction found</i>';
-      if (!v.reachable) text = '<i>no answer</i>';
-      return '<div class="vrow' + (hit ? ' hit' : '') + '">' +
-             '<span class="who">uid ' + v.uid + '</span>' +
-             '<span style="flex:1;min-width:140px">' + text + '</span>' +
-             '<span class="meta">' + v.latency_ms + ' ms</span></div>';
+      var text = !v.reachable ? '<i>no answer</i>' : (found.length
+        ? found.map(function (f) { return 'step ' + f.index + ' <b>' + f.kind + '</b> ' + Number(f.confidence).toFixed(2); }).join('<br>')
+        : '<i>no friction found</i>');
+      return '<div class="vrow' + (hit ? ' hit' : '') + '"><span class="who">uid ' + v.uid +
+             '</span><span style="flex:1;min-width:120px">' + text + '</span>' +
+             '<span class="sub">' + v.latency_ms + 'ms</span></div>';
     }).join('');
 
-    var head = truth
-      ? '<p class="eyebrow">you armed ' + truth.kind + ' at step ' + truth.index + ' (' + truth.step + ')</p>'
-      : '<p class="eyebrow">nothing was armed — this is just a session</p>';
-    box.insertAdjacentHTML('afterbegin', head);
-
-    screen.innerHTML =
-      '<div class="big">Session sent</div>' +
-      '<p class="meta">' + (data.events || []).length + ' events · id ' +
-      String(data.session_id).slice(0, 8) + '</p>' +
-      '<div><button id="again">Run another</button></div>';
-    document.getElementById('again').addEventListener('click', function () {
-      i = 0; rec = []; drawRec(); slab.hidden = true; setArm(armKind); enter();
+    screen.innerHTML = '<div class="big">Session sent</div>' +
+      '<p class="sub">' + rec.length + ' events · id ' + String(data.session_id).slice(0, 8) +
+      ' · look at lane 2, the chain column filled in</p>' +
+      '<div class="ctrls"><button id="again">Run another</button></div>';
+    $('again').addEventListener('click', function () {
+      i = 0; rec = []; $('verdictSlab').hidden = true;
+      $('chainNote').innerHTML = 'The <b>chain</b> column is unknown to this page. The gateway ' +
+        'adds it — that half is the whole reason this is a subnet and not a session recorder.';
+      setArm(armKind); drawRec(); enter();
     });
     loadChain();
   }
 
   function loadChain() {
     fetch('/api/chain').then(function (r) { return r.json(); }).then(function (c) {
-      if (c.error) { document.getElementById('subnetMeta').textContent = 'chain unreadable: ' + c.error; return; }
-      document.getElementById('subnetName').textContent = 'netuid ' + c.netuid + ' · ' + (c.name || 'unnamed');
-      document.getElementById('subnetMeta').textContent = 'block ' + c.block + ' · tempo ' + c.tempo + ' · ' + c.neurons.length + ' neurons';
-      document.getElementById('chainBody').innerHTML = c.neurons.map(function (n) {
-        return '<tr class="' + (n.is_validator ? 'me' : '') + '"><td class="n">' + n.uid + '</td>' +
-               '<td>' + n.hotkey.slice(0, 8) + '…' + (n.is_validator ? ' <b>(validator)</b>' : '') + '</td>' +
-               '<td>' + (n.axon || '—') + '</td>' +
-               '<td class="n">' + (n.weight ? n.weight.toFixed(3) : '—') + '</td></tr>';
+      if (c.error) { $('chainMeta').textContent = 'chain unreadable'; return; }
+      $('subnetName').textContent = 'netuid ' + c.netuid + ' · ' + (c.name || 'unnamed');
+      $('chainMeta').textContent = 'block ' + c.block;
+      $('chainBody').innerHTML = c.neurons.map(function (n) {
+        return '<tr><td class="n">' + n.uid + '</td><td>' +
+               (n.is_validator ? 'validator' : 'miner') + '</td><td>' +
+               (n.axon || '—') + '</td><td class="n">' +
+               (n.weight ? n.weight.toFixed(3) : '—') + '</td></tr>';
       }).join('');
-    }).catch(function () {
-      document.getElementById('subnetMeta').textContent = 'gateway not answering';
-    });
+    }).catch(function () { $('chainMeta').textContent = 'gateway not answering'; });
   }
 
   fetch('/api/meta').then(function (r) { return r.json(); }).then(function (m) {
     STEPS = m.steps; AWAIT = m.await_steps;
-    drawRec(); setArm(null); enter(); loadChain();
+    setArm(null); drawRec(); enter(); loadChain();
   }).catch(function () {
-    screen.innerHTML = '<div class="err">cannot reach the gateway — is neurons.gateway running?</div>';
+    screen.innerHTML = '<div class="note bad">cannot reach the gateway — is neurons.gateway running?</div>';
   });
 })();
 </script>

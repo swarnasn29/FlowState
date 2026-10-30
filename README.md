@@ -83,7 +83,7 @@ of magnitude: `quote_received` is normal at 300–1,200ms, while `tx_pending`
 under chain congestion is normal all the way to 45,000ms — longer than an
 injected stall's lower bound. This is the single most important property of the
 data. It means **"the slowest step is the problem" is wrong**, and measurably
-so: that heuristic scores 52.3%, worse than a miner with no history at all.
+so: that heuristic scores 0.370, worse than a miner with no history at all.
 
 ### Friction taxonomy
 
@@ -133,35 +133,38 @@ back to desync plus a "slowest step" guess. It gets better as it serves traffic.
 ## 4. Results
 
 Measured over 2,000 unseen sessions after 2,000 calibration sessions
-(`python -m flowstate.detect`):
+(`python -m flowstate.detect`). A session carries **zero, one or two** friction
+points, so a response is a set and is marked on four criteria rather than one
+boolean — see §3.
 
-| Strategy | Accuracy |
+| Strategy | Score |
 |---|---|
-| **Per-step profile, calibrated** | **97.0%** |
-| Naive global thresholds | 89.5% |
-| Per-step profile, cold — same code, no history | 62.0% |
-| Cheat: "first non-ok `ui_state`" | 55.8% |
-| Cheat: "the slowest step" | 52.3% |
-| Random floor | 12.5% |
+| **Per-step profile, calibrated** | **0.846** |
+| Naive global thresholds | 0.807 |
+| Per-step profile, cold — same code, no history | 0.526 |
+| Cheat: "every non-ok `ui_state`" | 0.439 |
+| Cheat: "the slowest step" | 0.370 |
+| Cheat: "claim nothing, ever" | 0.280 |
 
-**The 35-point gap between calibrated and cold is the result that matters.** It
-is the evidence that the per-step statistical model earns its place rather than
-being decoration — same code, same thresholds, the only difference is
-accumulated history. Both cheat baselines are *measured on every run*, not
-quoted, so any change that re-leaks a label shows up immediately.
+**The 0.32 gap between calibrated and cold is the result that matters.** It is
+the evidence that the per-step statistical model earns its place rather than
+being decoration — same code, the only difference is accumulated history. Every
+baseline is *measured on every run*, not quoted, so any change that re-leaks a
+label shows up immediately.
 
-Note that both cheats now score *below* a cold miner. A single global "too
-slow" threshold cannot work once a healthy `tx_pending` runs to 45 seconds,
-which is the whole argument for modelling friction per step.
+Note that every cheat scores *below* a cold miner. A single global "too slow"
+threshold cannot work once a healthy `tx_pending` runs to 45 seconds, which is
+the whole argument for modelling friction per step. And "claim nothing, ever"
+scoring 0.280 is not a coincidence: it is simply the fraction of sessions that
+are genuinely clean.
 
-By friction kind: `silent_failure` 99.4%, `error_loop` 98.5%, `stall` 95.8%,
-`rage_click` 94.5%. Rage-click is hardest because benign impatience reaches 6
+By friction kind: `silent_failure` 0.947, `stall` 0.893, `error_loop` 0.832,
+`rage_click` 0.779. Rage-click is hardest because benign impatience reaches 6
 clicks while injected rage starts at 4 — some cases are genuinely undecidable,
-and a detector scoring 100% there would mean a label had leaked.
+and a detector scoring 1.00 there would mean a label had leaked.
 
-A live round reports a few points lower, because a fresh miner starts cold and
-crosses its 30-session threshold partway through. That warm-up is a real
-property of the design, worth showing rather than hiding.
+The best detector localises a session *perfectly* only 77% of the time, which
+is the headroom a better miner has to compete for.
 
 ### Does the subnet actually rank anyone?
 
@@ -171,23 +174,23 @@ which knows the desync trick and uses identical signal weights, and differs in
 exactly one respect: global thresholds instead of per-step ones. Both miners
 are genuinely trying.
 
-400 scored challenges each, both registered on netuid 600:
+600 scored challenges each, both registered on netuid 600:
 
-| Miner | uid | Accuracy | Weight | Emission share |
+| Miner | uid | Score | Weight | Emission share |
 |---|---|---|---|---|
-| Per-step profile | 1 | 94.8% | 0.0613 | **58.7%** |
-| Naive global | 2 | 90.8% | 0.0431 | **41.3%** |
+| Per-step profile | 1 | 0.858 | 0.0249 | **59.1%** |
+| Naive global | 2 | 0.831 | 0.0172 | **40.9%** |
 
 Weight is **not** linear in accuracy:
 
 ```
-weight = max(0, accuracy − 0.70) ²
+weight = max(0, score − 0.70) ²
 ```
 
 Two deliberate choices. The **0.70 floor** sits above every zero-effort
 strategy in the table above — a cold miner, both cheats and random all earn
 nothing, which is a statement about what this subnet is willing to pay for.
-**Squaring** turns a 4-point accuracy difference into a 1.4× reward difference,
+**Squaring** turns a 0.027 score difference into a 1.45x reward difference,
 because a linear curve is a broken incentive: a miner doing materially better
 work would earn 4% more and nobody would bother. Both are tunable via
 `--score-floor` and `--score-power`.
@@ -199,16 +202,17 @@ challenges the way a live round does:
 
 | Challenges served | Per-step profile | Naive global | Leader |
 |---|---|---|---|
-| 40 | 62.5% | 80.0% | **naive** |
-| 100 | 83.0% | 88.0% | **naive** |
-| 200 | 89.0% | 84.5% | profile |
-| 400 | 93.5% | 87.8% | profile |
-| 1200 | 95.0% | 87.8% | profile |
+| 40 | 0.553 | 0.806 | **naive** |
+| 100 | 0.752 | 0.769 | **naive** |
+| 200 | 0.809 | 0.809 | **tied** |
+| 300 | 0.827 | 0.803 | profile |
+| 600 | 0.845 | 0.826 | profile |
+| 1600 | 0.862 | 0.810 | profile |
 
-Below roughly 200 challenges the better miner **loses**, because it is still
+Below roughly 300 challenges the better miner **loses**, because it is still
 estimating each step's norms while the naive miner's fixed thresholds work from
 the first request. `scripts/demo_compare.sh` therefore refuses to run with
-fewer than 200 challenges rather than produce a backwards result.
+fewer than 300 challenges rather than produce a backwards result.
 
 This is a real property of the design, not a bug to hide: a subnet that rewards
 learned behaviour has to tolerate new miners being temporarily bad, and that is

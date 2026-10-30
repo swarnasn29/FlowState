@@ -54,20 +54,20 @@ chosen to sit *below* the ~1-in-8 contamination rate rather than inside it.
 
 Measured over 2,000 unseen sessions after 2,000 calibration sessions:
 
-| Strategy | Accuracy |
+| Strategy | Score |
 |---|---|
-| Per-step profile, calibrated | **97.0%** |
-| Naive global thresholds | 89.5% |
-| Per-step profile, cold (no history) | 62.0% |
-| Cheat: "first non-ok ui_state" | 55.8% |
-| Cheat: "the slowest step" | 52.3% |
-| Random floor | 12.5% |
+| Per-step profile, calibrated | **0.846** |
+| Naive global thresholds | 0.807 |
+| Per-step profile, cold (no history) | 0.526 |
+| Cheat: "every non-ok ui_state" | 0.439 |
+| Cheat: "the slowest step" | 0.370 |
+| Cheat: "claim nothing, ever" | 0.280 |
 
-The 35-point gap between calibrated and cold is the point: it is the evidence
+The 0.32 gap between calibrated and cold is the point: it is the evidence
 that the per-step statistical model earns its place. Before the overlap change
 cold also scored 100%, which meant the model contributed nothing.
-Per kind: silent_failure 99.4%, error_loop 98.5%, stall 95.8%,
-rage_click 94.5% (hardest, because benign impatience reaches 6 and injected
+Per kind: silent_failure 0.947, stall 0.893, error_loop 0.832,
+rage_click 0.779 (hardest, because benign impatience reaches 6 and injected
 rage starts at 4).
 
 Both cheats now score *below* a cold miner, because a single global "too slow"
@@ -83,14 +83,14 @@ demonstrating, not hiding.
 
 `bash scripts/demo_compare.sh` runs the real detector against
 `flowstate/detect_naive.py` (global thresholds, learns nothing, otherwise
-identical). 400 challenges each, both registered on netuid 600:
+identical). 600 challenges each, both registered on netuid 600:
 
-| Miner | uid | Accuracy | Weight | Share |
+| Miner | uid | Score | Weight | Share |
 |---|---|---|---|---|
-| Per-step profile | 1 | 94.8% | 0.0613 | 58.7% |
-| Naive global | 2 | 90.8% | 0.0431 | 41.3% |
+| Per-step profile | 1 | 0.858 | 0.0249 | 59.1% |
+| Naive global | 2 | 0.831 | 0.0172 | 40.9% |
 
-Weight is `max(0, accuracy - 0.70) ** 2` — the floor sits above every
+Weight is `max(0, score - 0.70) ** 2` — the floor sits above every
 zero-effort strategy above, and squaring stops a linear curve from paying
 4% more for substantially better work. Tunable with `--score-floor` and
 `--score-power`.

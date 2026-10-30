@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlowState Subnet</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  /* Layout: one 1040px column, left-aligned; full-width bands alternate surface
+     tone; every figure sits in a mono column so the data reads as a receipt. */
+  :root {
+    --bg: #f6f7f4;
+    --surface: #fdfdfb;
+    --sunk: #eef0ec;
+    --fg: #11151f;
+    --muted: #5a6472;
+    --line: #e2e5df;
+    --accent: #2456c0;
+    --accent-soft: #e4ebfa;
+    --warn: #b8541a;
+    --warn-soft: #fbede2;
+    --ink-invert: #f1f3f0;
+    --term-bg: #0e1219;
+    --term-fg: #c8d0dc;
+    --term-accent: #8fb4f5;
+    --term-warn: #f0a062;
+    --display: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1219;
+      --surface: #161c27;
+      --sunk: #11161f;
+      --fg: #f1f3f0;
+      --muted: #9aa5b4;
+      --line: #272f3d;
+      --accent: #7fa8f0;
+      --accent-soft: #17243b;
+      --warn: #f0a062;
+      --warn-soft: #2b1d12;
+      --ink-invert: #11151f;
+      --term-bg: #080b11;
+      --term-fg: #c8d0dc;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1219;
+    --surface: #161c27;
+    --sunk: #11161f;
+    --fg: #f1f3f0;
+    --muted: #9aa5b4;
+    --line: #272f3d;
+    --accent: #7fa8f0;
+    --accent-soft: #17243b;
+    --warn: #f0a062;
+    --warn-soft: #2b1d12;
+    --ink-invert: #11151f;
+    --term-bg: #080b11;
+    --term-fg: #c8d0dc;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--display);
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1040px;
+    margin-inline: auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 72px;
+  }
+  .band { background: var(--surface); border-block: 1px solid var(--line); }
+  .band-sunk { background: var(--sunk); border-block: 1px solid var(--line); }
+
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+  h1 {
+    font-size: clamp(2.6rem, 8vw, 4.6rem);
+    font-weight: 600;
+    letter-spacing: -0.035em;
+    line-height: 1.02;
+  }
+  h2 {
+    font-size: clamp(1.6rem, 4.4vw, 2.3rem);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+  h3 { font-size: 1.1rem; font-weight: 600; letter-spacing: -0.01em; }
+  p { margin: 0; max-width: 68ch; }
+  .lede { font-size: clamp(1.1rem, 2.6vw, 1.45rem); line-height: 1.45; color: var(--fg); }
+  .muted { color: var(--muted); }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.76rem;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--warn);
+  }
+  .eyebrow-accent { color: var(--accent); }
+
+  .stack { display: flex; flex-direction: column; gap: 18px; }
+  .stack-lg { display: flex; flex-direction: column; gap: 34px; }
+  .row { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+
+  .pill {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    font-weight: 500;
+    padding: 7px 15px;
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .btn {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.88rem;
+    font-weight: 500;
+    text-decoration: none;
+    padding: 12px 20px;
+    border: 1px solid var(--fg);
+    color: var(--fg);
+    background: transparent;
+  }
+  .btn-solid { background: var(--fg); color: var(--ink-invert); }
+  .btn:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
+  .card-accent { border-color: var(--accent); }
+  .card-plain { background: transparent; }
+  .card h3 { color: var(--fg); }
+  .card p { font-size: 0.97rem; color: var(--muted); }
+  .kicker {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .scroll { overflow-x: auto; border: 1px solid var(--line); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 0.95rem; }
+  caption { text-align: left; padding: 16px 20px 0; font-size: 0.88rem; color: var(--muted); }
+  th, td { padding: 13px 20px; text-align: left; border-bottom: 1px solid var(--line); }
+  thead th {
+    font-family: var(--mono);
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+  .hl { background: var(--accent-soft); }
+  .hl td { font-weight: 600; }
+  .warn-row { background: var(--warn-soft); }
+  .is-accent { color: var(--accent); }
+  .is-warn { color: var(--warn); }
+
+  .term {
+    background: var(--term-bg);
+    color: var(--term-fg);
+    font-family: var(--mono);
+    font-size: 0.88rem;
+    line-height: 1.85;
+    padding: 24px;
+    overflow-x: auto;
+    border: 1px solid var(--line);
+  }
+  .term .c-accent { color: var(--term-accent); }
+  .term .c-warn { color: var(--term-warn); }
+  .term .c-dim { color: #6e7a8c; }
+
+  ul { margin: 0; padding-left: 1.2em; }
+  li { margin-bottom: 8px; }
+  li:last-child { margin-bottom: 0; }
+  a { color: var(--accent); }
+
+  footer .wrap { padding-block: 44px; }
+  @media (max-width: 560px) {
+    .wrap { padding-block: 52px; }
+    body { font-size: 16px; }
+  }
+</style>
+
+<style>
+  /* Stands in for the reset the artifact platform normally supplies. */
+  html { color-scheme: light dark }
+  body { margin: 0 }
+  img { max-width: 100% }
+  [hidden] { display: none !important }
+</style>
+</head>
+<body>
+<div class="wrap" style="padding-block:18px">
+  <div style="border:3px solid var(--accent);padding:14px 16px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between">
+    <p style="margin:0;font-size:0.95rem"><strong>Live subnet:</strong> netuid 600 on test.finney,
+      weights revealed on chain. The interactive dApp runs locally &mdash;
+      <code style="font-family:var(--mono)">bash scripts/run_stack.sh</code>.</p>
+    <span style="display:flex;gap:10px;flex-wrap:wrap">
+      <a class="btn btn-solid" href="https://github.com/swarnasn29/FlowState">Code</a>
+      <a class="btn" href="https://github.com/swarnasn29/FlowState/blob/main/docs/DEMO.md">Transcript</a>
+    </span>
+  </div>
+</div>
+<header>
+  <div class="wrap stack-lg">
+    <p class="eyebrow">Bittensor Hacker House · Protocol Track</p>
+    <div class="stack">
+      <h1>FlowState</h1>
+      <p class="lede">A behavioral UX analytics subnet that finds the exact step where a Web3 user hit
+        friction — including the failures the interface never reports.</p>
+    </div>
+    <div class="row">
+      <span class="pill">Live · netuid 600 · test.finney</span>
+      <span class="muted">Validator and two miners running. Weights committed on chain.</span>
+    </div>
+    <div class="row">
+      <a class="btn btn-solid" href="https://github.com/swarnasn29/FlowState">View the code</a>
+      <a class="btn" href="https://github.com/swarnasn29/FlowState/blob/main/docs/DEMO.md">Captured demo transcript</a>
+    </div>
+  </div>
+</header>
+
+<section class="band">
+  <div class="wrap stack-lg">
+    <div class="stack">
+      <p class="eyebrow">One session, two accounts of it</p>
+      <h2>The swap went through. The interface never said so.</h2>
+    </div>
+    <div class="grid-2">
+      <div class="card card-plain">
+        <p class="kicker is-warn">What the user saw</p>
+        <p style="font-family: var(--mono); font-size: 1.9rem; font-weight: 500; color: var(--warn);">pending</p>
+        <p>A spinner, for 24.6 seconds, then nothing. No error. No retry prompt. Most people refresh,
+          or submit the swap a second time.</p>
+      </div>
+      <div class="card card-plain">
+        <p class="kicker">What the chain recorded</p>
+        <p style="font-family: var(--mono); font-size: 1.9rem; font-weight: 500; color: var(--accent);">confirmed</p>
+        <p>The transaction had already settled. The tokens were in the wallet the whole time the user
+          sat watching a spinner.</p>
+      </div>
+    </div>
+    <p class="lede">Nothing errored, so nothing was logged. No analytics tool recorded a problem here,
+      because by every signal it watches, there wasn't one.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap stack-lg">
+    <div class="stack">
+      <p class="eyebrow">Why session-replay tools cannot do this</p>
+      <h2>Three friction types are visible in the UI. The fourth is the expensive one.</h2>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Friction</th>
+            <th scope="col">What the user experiences</th>
+            <th scope="col">Seen by UI-only tools</th>
+            <th scope="col">Needs chain data</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>stall</td><td>A spinner that never resolves</td>
+            <td class="is-accent">Yes</td><td class="muted">No</td>
+          </tr>
+          <tr>
+            <td>error_loop</td><td>The approval or slippage trap, repeatedly</td>
+            <td class="is-accent">Yes</td><td class="muted">No</td>
+          </tr>
+          <tr>
+            <td>rage_click</td><td>The button looks dead, so they hammer it</td>
+            <td class="is-accent">Yes</td><td class="muted">No</td>
+          </tr>
+          <tr class="warn-row">
+            <td><strong>silent_failure</strong></td>
+            <td><strong>It worked. The UI never said so.</strong></td>
+            <td class="is-warn"><strong>No — invisible</strong></td>
+            <td class="is-warn"><strong>Yes</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>FlowState reads the interface and the chain for the same moment. The only evidence of a silent
+      failure is the disagreement between them, which is why this belongs on a chain-native network
+      rather than in a session-replay product.</p>
+  </div>
+</section>
+
+<section class="band-sunk">
+  <div class="wrap stack-lg">
+    <div class="stack">
+      <p class="eyebrow eyebrow-accent">The subnet</p>
+      <h2>A market for finding the broken step</h2>
+    </div>
+    <div class="grid-4">
+      <div class="card">
+        <p class="kicker">dApps</p>
+        <h3>Send telemetry</h3>
+        <p>UI interactions plus wallet and chain events, per session.</p>
+      </div>
+      <div class="card">
+        <p class="kicker">Validator</p>
+        <h3>Asks, and marks</h3>
+        <p>Generates sessions with a known answer. Relays real ones with none.</p>
+      </div>
+      <div class="card card-accent">
+        <p class="kicker">Miners</p>
+        <h3>Locate the friction</h3>
+        <p>Return the step index, the kind, and a confidence.</p>
+      </div>
+      <div class="card">
+        <p class="kicker">Chain</p>
+        <h3>Pays the accurate</h3>
+        <p>Accuracy becomes weight. Weight becomes emissions.</p>
+      </div>
+    </div>
+    <p>Every request is signed with the caller's hotkey and checked against the metagraph before a
+      miner spends any CPU. Bittensor v11 removed the axon, dendrite and Synapse stack, so the
+      transport is our own signed HTTP, written from the migration notes.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap stack-lg">
+    <div class="stack">
+      <p class="eyebrow eyebrow-accent">The hard part was never detection</p>
+      <h2>Real telemetry has no answer key</h2>
+      <p class="lede">A miner replies "friction at checkout, confidence 0.8." Nobody knows whether it
+        is right. Three things break at once.</p>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <h3>A lazy miner cannot be caught</h3>
+        <p>One answering "step 3" every time looks identical to one doing real work.</p>
+      </div>
+      <div class="card">
+        <h3>Honest validators disagree</h3>
+        <p>Two of them grade differently, diverge, and Bittensor's consensus penalises both.</p>
+      </div>
+      <div class="card">
+        <h3>Quality scoring gets gamed</h3>
+        <p>Score the report and miners optimise the proxy: longer text, more confident language.</p>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="card card-accent">
+        <p class="kicker">Scored stream</p>
+        <h3>The validator writes the question</h3>
+        <ul>
+          <li>Synthetic session, friction injected at a known index</li>
+          <li>The answer never leaves the validator</li>
+          <li>This alone sets weights, because it is the only thing verifiable</li>
+        </ul>
+      </div>
+      <div class="card">
+        <p class="kicker is-warn">Organic stream</p>
+        <h3>A real dApp sends a real session</h3>
+        <ul>
+          <li>No known answer, because nobody knows it</li>
+          <li>The report goes back to the dApp</li>
+          <li>Never scored. This is the product, not the test</li>
+        </ul>
+      </div>
+    </div>
+    <p>The two are byte-identical on the wire. A miner that could tell them apart would work hard only
+      when marked, so the distinction lives entirely on the validator's side. Passing the exam is how
+      a miner earns the right to serve the traffic.</p>
+  </div>
+</section>
+
+<section class="band">
+  <div class="wrap stack-lg">
+    <div class="stack">
+      <p class="eyebrow eyebrow-accent">2,000 unseen sessions · measured on every run</p>
+      <h2>Does the task actually require skill?</h2>
+    </div>
+    <div class="scroll">
+      <table>
+        <caption>Mean rubric score over sessions carrying zero, one or two friction points.</caption>
+        <thead>
+          <tr><th scope="col">Strategy</th><th scope="col" class="num">Score</th></tr>
+        </thead>
+        <tbody>
+          <tr class="hl">
+            <td>Per-step statistical profile, calibrated</td>
+            <td class="num is-accent">0.846</td>
+          </tr>
+          <tr><td>Naive global thresholds</td><td class="num">0.807</td></tr>
+          <tr><td>The same code, with no history yet</td><td class="num">0.526</td></tr>
+          <tr><td>Cheat: "every event whose UI state is not ok"</td><td class="num is-warn">0.439</td></tr>
+          <tr><td>Cheat: "the slowest step"</td><td class="num is-warn">0.370</td></tr>
+          <tr><td>Cheat: "claim nothing, ever"</td><td class="num muted">0.280</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The 0.32 gap between calibrated and cold is the result that matters. Identical code; the
+      only difference is traffic it has learned from. Every cheat scores below an untrained miner,
+      because no fixed threshold survives a step that is legitimately slow — a healthy
+      <code style="font-family: var(--mono);">tx_pending</code> runs to 45 seconds under congestion,
+      longer than many injected stalls.</p>
+    <p>A session carries <strong>zero, one or two</strong> friction points — 30% of them none at
+      all — so a miner returns a set, possibly empty, and has to decide whether anything is wrong
+      before deciding where. Answering a clean session with silence scores 1.00; a confident false
+      positive scores 0.02. That is also why "claim nothing, ever" scores 0.280: it is simply the
+      fraction of sessions that are genuinely clean.</p>
+    <p>Scoring is four named criteria rather than one boolean, and the validator prints them on
+      every run, because a rule miners cannot read is a rule they reverse-engineer:
+      <strong>localisation</strong> 0.70 (F1 over the reported step indices),
+      <strong>kind</strong> 0.20, <strong>calibration</strong> 0.10 (1 − Brier over its own
+      confidences), and <strong>latency</strong> as a pass/fail gate. Four guesses at two frictions
+      scores 0.64 — below honestly finding one of them at 0.76 — so flooding the response cannot
+      pay.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap stack-lg">
+    <div class="stack">
+      <p class="eyebrow eyebrow-accent">Two miners, 400 scored challenges each</p>
+      <h2>A subnet whose miners all score alike ranks nobody</h2>
+    </div>
+    <div class="scroll">
+      <table>
+        <caption>600 scored challenges each. Both miners genuinely try: the weak one knows the
+          chain-desync signal and uses identical signal weights, differing in one respect only,
+          global thresholds instead of per-step ones.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Miner</th>
+            <th scope="col" class="num">uid</th>
+            <th scope="col" class="num">Score</th>
+            <th scope="col" class="num">Weight</th>
+            <th scope="col" class="num">Emissions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="hl">
+            <td>Per-step profile</td>
+            <td class="num">1</td><td class="num">0.858</td>
+            <td class="num">0.0249</td><td class="num is-accent">59.1%</td>
+          </tr>
+          <tr>
+            <td>Naive global thresholds</td>
+            <td class="num">2</td><td class="num">0.831</td>
+            <td class="num">0.0172</td><td class="num is-warn">40.9%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <p class="kicker">Weight is not accuracy</p>
+        <p style="font-family: var(--mono); font-size: 1.3rem; color: var(--accent);">max(0, score − 0.70)²</p>
+        <p>Linear weighting would pay the better miner 3% more for substantially harder work, so
+          nobody would improve.</p>
+      </div>
+      <div class="card">
+        <p class="kicker">The floor earns nothing</p>
+        <p style="font-family: var(--mono); font-size: 1.3rem; color: var(--accent);">0.70</p>
+        <p>Above every zero-effort strategy in the table above. A cheat and an untrained miner both
+          receive zero.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band-sunk">
+  <div class="wrap stack-lg">
+    <div class="stack">
+      <p class="eyebrow">Not a mock</p>
+      <h2>It is running, and the chain says so</h2>
+    </div>
+    <div class="term">
+      <span class="c-dim">$</span> DISCOVER=1 bash scripts/demo_compare.sh<br>
+      <span class="c-accent">discovered 2 miner(s) with published endpoints</span><br>
+      <span class="c-accent">scored round 1 complete (400 challenges)</span><br>
+      setting weights: {1: 0.061, 2: 0.043}<br>
+      <span class="c-warn">weights accepted: success=True</span><br>
+      <span class="c-warn">extrinsic_id='8326769-0005'</span><br>
+      TimelockedWeightsCommitted
+    </div>
+    <div class="grid-4">
+      <div class="card">
+        <p class="kicker">Subnet</p>
+        <h3 style="font-family: var(--mono);">netuid 600</h3>
+        <p>Created, activated, and named on chain as FlowState.</p>
+      </div>
+      <div class="card">
+        <p class="kicker">Neurons</p>
+        <h3 style="font-family: var(--mono);">uid 0 · 1 · 2</h3>
+        <p>One validator and two miners, registered and serving.</p>
+      </div>
+      <div class="card">
+        <p class="kicker">Total cost</p>
+        <h3 style="font-family: var(--mono);">τ1.017</h3>
+        <p>Subnet creation through weight commits, of τ3.00 granted.</p>
+      </div>
+      <div class="card">
+        <p class="kicker">Built by</p>
+        <h3>One designer</h3>
+        <p>No prior backend, dApp or Bittensor experience, over one weekend.</p>
+      </div>
+    </div>
+    <p>Registration cost τ0.008 rather than τ0.99, because a new subnet's burn starts near the
+      creation price and decays over hours. Waiting two hours before registering saved most of a TAO.</p>
+  </div>
+</section>
+
+<section class="band">
+  <div class="wrap stack-lg">
+    <div class="stack">
+      <p class="eyebrow">What this does not claim</p>
+      <h2>The limits, and the things that went wrong</h2>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <h3 class="is-accent">Deliberately not built</h3>
+        <ul>
+          <li><strong>Consensus scoring</strong> for organic traffic. Comparing miners against each
+            other risks rewarding conformity over correctness.</li>
+          <li><strong>A real dApp feed.</strong> Organic sessions are currently fabricated with their
+            answers discarded.</li>
+          <li><strong>A second flow.</strong> Everything assumes a token swap.</li>
+          <li><strong>Pruning.</strong> A useless miner earns nothing but keeps its uid.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3 class="is-warn">Found by testing my own work</h3>
+        <ul>
+          <li><strong>A label leak.</strong> The injected friction tagged itself, so one line of code
+            scored 75% with perfect precision.</li>
+          <li><strong>Weights paid on luck.</strong> A per-challenge average with a five-sample memory
+            split emissions 100/0. It reached the chain before it was caught.</li>
+          <li><strong>A silently discarded endpoint.</strong> The chain accepts a loopback address and
+            stores zero, leaving a miner invisible while it looks healthy.</li>
+        </ul>
+      </div>
+    </div>
+    <p>Every figure on this page is produced by a script in the repository, on every run — including
+      the lazy-strategy baselines, so a future leak shows up instead of quietly inflating the score.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap stack-lg">
+    <div class="stack">
+      <h2>Reproducing it</h2>
+      <p>Everything runs inside WSL2 or Linux. Bittensor does not support native Windows.</p>
+    </div>
+    <div class="term">
+      <span class="c-dim">$</span> bash scripts/healthcheck.sh <span class="c-dim"># 8 code checks</span><br>
+      <span class="c-dim">$</span> python -m scripts.preflight --require-miners <span class="c-dim"># will a run work now?</span><br>
+      <span class="c-dim">$</span> DISCOVER=1 bash scripts/demo_compare.sh <span class="c-dim"># the demo above</span>
+    </div>
+    <div class="row">
+      <a class="btn btn-solid" href="https://github.com/swarnasn29/FlowState">github.com/swarnasn29/FlowState</a>
+      <span class="muted">No keys or wallets in the repository.</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -28,12 +28,13 @@ import logging
 import random
 import time
 import uuid
+from collections import defaultdict, deque
 from dataclasses import asdict
 from pathlib import Path
 
 import bittensor as bt
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
@@ -55,6 +56,57 @@ STEP_NAMES = [step for step, _, _ in SWAP_FLOW]
 # per request, so a short cache keeps the panel live without a chain round-trip
 # on every keystroke.
 CHAIN_CACHE_S = 25.0
+
+# The browser leg carries no authentication. That is fine on loopback and not
+# fine behind a public tunnel, where the URL is crawlable and every /api/ingest
+# call fans out to every miner. These caps are the floor: enough for a demo,
+# not enough to use the miners as someone else's compute.
+INGEST_PER_MINUTE = 20          # per client
+INGEST_BURST_GLOBAL = 60        # across all clients, same window
+MAX_EVENTS_PER_SESSION = 64     # a swap is 8; this only stops absurd payloads
+
+_hits: dict[str, deque[float]] = defaultdict(deque)
+_all_hits: deque[float] = deque()
+
+
+def _client_key(request: Request) -> str:
+    """Who is calling, as well as we can tell.
+
+    Behind cloudflared the socket peer is Cloudflare, so the real caller is in
+    X-Forwarded-For. That header is trivially spoofable when nothing trusted
+    sets it, which means this is a courtesy limit against accidental load and
+    casual abuse - not a security control. Anything stronger needs a real token.
+    """
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _rate_check(request: Request) -> None:
+    now = time.monotonic()
+    cutoff = now - 60.0
+
+    while _all_hits and _all_hits[0] < cutoff:
+        _all_hits.popleft()
+    if len(_all_hits) >= INGEST_BURST_GLOBAL:
+        raise HTTPException(429, "gateway busy — try again in a minute")
+
+    key = _client_key(request)
+    window = _hits[key]
+    while window and window[0] < cutoff:
+        window.popleft()
+    if len(window) >= INGEST_PER_MINUTE:
+        raise HTTPException(
+            429, f"rate limit: {INGEST_PER_MINUTE} sessions per minute"
+        )
+
+    window.append(now)
+    _all_hits.append(now)
+    # Keep the per-client table from growing without bound on a public URL.
+    if len(_hits) > 4096:
+        for stale in [k for k, w in _hits.items() if not w]:
+            del _hits[stale]
 
 
 class BrowserEvent(BaseModel):
@@ -249,11 +301,16 @@ async def chain() -> dict:
 
 
 @app.post("/api/ingest")
-async def ingest(payload: IngestRequest) -> dict:
+async def ingest(payload: IngestRequest, request: Request) -> dict:
     """Relay one real session to every miner and return their reports."""
     assert state is not None
+    _rate_check(request)
     if not payload.events:
         raise HTTPException(422, "a session needs at least one event")
+    if len(payload.events) > MAX_EVENTS_PER_SESSION:
+        raise HTTPException(
+            422, f"at most {MAX_EVENTS_PER_SESSION} events per session"
+        )
 
     session, truth = build_session(payload)
 

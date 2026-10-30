@@ -116,9 +116,16 @@ slides `skill`, `ranking` and `onchain`, plus the matching page sections.
 1. **Consensus scoring** for the organic stream — scoring unverifiable work
    means comparing miners against each other, which risks rewarding
    conformity over correctness.
-2. **A real dApp feeding the organic stream.** Organic sessions are currently
-   fabricated with their answers discarded, which proves the path, not the
-   product.
+2. **A third-party dApp on the organic stream.** The intake is built:
+   `neurons/gateway.py` + `web/index.html` give a clickable swap UI whose real
+   dwell times and click counts go to the miners over signed HTTP. Verified
+   end to end: an armed silent_failure at token_approve was named correctly by
+   both miners. What is missing is somebody else's dApp pointing at it.
+
+   Run it:
+   `python -m neurons.gateway --miner miner=http://127.0.0.1:8091 --miner miner_naive=http://127.0.0.1:8092`
+   then open http://127.0.0.1:8099 . Keys 0-4 arm a friction for a live demo;
+   organic sessions are never scored.
 3. **One flow only** — everything assumes a token swap. `SWAP_FLOW` being a
    module-level constant is the main thing in the way of a second flow.
 

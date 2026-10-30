@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlowState · live telemetry</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Mono:wght@400;700&display=swap">
+<style>
+  :root {
+    --ink: #0a0a0a; --concrete: #dcdad3; --slab: #c9c6bd; --paper: #f2f0eb;
+    --blue: #1f3cff; --acid: #d8ff00; --siren: #ff3b1f; --dim: #6d6a63;
+    --display: "Archivo Black", "Arial Black", Impact, sans-serif;
+    --mono: "Space Mono", ui-monospace, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--concrete); color: var(--ink);
+    font-family: var(--mono); font-size: 15px; line-height: 1.5;
+    padding: 20px;
+  }
+  h1, h2, h3 { font-family: var(--display); text-transform: uppercase; margin: 0; letter-spacing: -0.02em; }
+  h1 { font-size: clamp(2rem, 5vw, 3.2rem); line-height: 0.95; }
+  h2 { font-size: 1.35rem; }
+  h3 { font-size: 1rem; }
+  .wrap { max-width: 1320px; margin-inline: auto; display: flex; flex-direction: column; gap: 18px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 14px; align-items: baseline; justify-content: space-between; }
+  .eyebrow { font-weight: 700; font-size: .72rem; letter-spacing: .34em; text-transform: uppercase; color: var(--blue); }
+  .cols { display: grid; grid-template-columns: 1.55fr 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 920px) { .cols { grid-template-columns: 1fr; } }
+
+  .slab { background: var(--slab); border: 6px solid var(--ink); box-shadow: 10px 10px 0 var(--ink); padding: 20px; min-width: 0; }
+  .slab.paper { background: var(--paper); }
+  .slab.blue { background: var(--blue); color: var(--paper); }
+  .slab.acid { background: var(--acid); }
+  .slab.siren { background: var(--siren); color: var(--paper); }
+
+  button {
+    font-family: var(--mono); font-weight: 700; font-size: .95rem;
+    letter-spacing: .1em; text-transform: uppercase;
+    border: 5px solid var(--ink); background: var(--acid); color: var(--ink);
+    padding: 16px 26px; cursor: pointer; box-shadow: 7px 7px 0 var(--ink);
+  }
+  button:active { transform: translate(3px, 3px); box-shadow: 4px 4px 0 var(--ink); }
+  button[disabled] { background: var(--slab); color: var(--dim); cursor: not-allowed; }
+  button.ghost { background: transparent; box-shadow: none; border-width: 3px; padding: 9px 14px; font-size: .78rem; }
+
+  .steps { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pip { font-size: .68rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+         border: 3px solid var(--ink); padding: 5px 8px; background: var(--paper); }
+  .pip.done { background: var(--ink); color: var(--acid); }
+  .pip.now { background: var(--blue); color: var(--paper); }
+
+  .screen { display: flex; flex-direction: column; gap: 14px; min-height: 216px; justify-content: center; }
+  .big { font-family: var(--display); font-size: clamp(1.6rem, 4vw, 2.6rem); line-height: 1; }
+  .meta { font-size: .8rem; color: var(--dim); }
+  .err { background: var(--siren); color: var(--paper); border: 4px solid var(--ink); padding: 10px 14px; font-weight: 700; }
+  .spin { display: inline-block; animation: sp 1s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+
+  table { border-collapse: collapse; width: 100%; font-size: .82rem; }
+  th, td { border: 3px solid var(--ink); padding: 7px 9px; text-align: left; }
+  th { background: var(--ink); color: var(--acid); font-size: .66rem; letter-spacing: .12em; text-transform: uppercase; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.me td { background: var(--paper); }
+
+  .chip { display: inline-block; font-weight: 700; font-size: .72rem; letter-spacing: .14em;
+          text-transform: uppercase; border: 4px solid var(--ink); padding: 6px 12px; background: var(--paper); }
+  .chip.armed { background: var(--siren); color: var(--paper); }
+  .verdict { display: flex; flex-direction: column; gap: 10px; }
+  .vrow { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; border: 4px solid var(--ink); padding: 11px 14px; background: var(--paper); }
+  .vrow.hit { background: var(--acid); }
+  .vrow .who { font-family: var(--display); font-size: .95rem; width: 110px; }
+  .scroll { overflow-x: auto; }
+  code { font-family: var(--mono); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="bar">
+    <div>
+      <p class="eyebrow">FlowState · live organic telemetry</p>
+      <h1>Swap something</h1>
+    </div>
+    <div style="text-align:right">
+      <span class="chip" id="armChip">armed: none</span>
+      <p class="meta" style="margin:6px 0 0">press <b>0</b> none · <b>1</b> stall · <b>2</b> error_loop · <b>3</b> rage_click · <b>4</b> silent_failure</p>
+    </div>
+  </div>
+
+  <div class="cols">
+
+    <!-- ------------------------------------------------ the fake dApp -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="slab paper">
+        <div class="steps" id="pips"></div>
+      </div>
+
+      <div class="slab" id="stage">
+        <div class="screen" id="screen"></div>
+      </div>
+
+      <div class="slab paper">
+        <h3>What this is recording</h3>
+        <div class="scroll">
+          <table id="recTable">
+            <thead><tr><th>step</th><th class="n">dwell ms</th><th class="n">retry</th><th class="n">rage</th><th>ui</th></tr></thead>
+            <tbody id="recBody"></tbody>
+          </table>
+        </div>
+        <p class="meta" style="margin-top:8px">Real dwell times and click counts from this browser. The chain half is added by the gateway, because a page cannot see it.</p>
+      </div>
+    </div>
+
+    <!-- ------------------------------------------------ subnet panel -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="slab blue">
+        <p class="eyebrow" style="color:var(--acid)">On chain</p>
+        <h2 id="subnetName">netuid …</h2>
+        <p class="meta" style="color:#cfe0ff" id="subnetMeta">reading metagraph…</p>
+      </div>
+
+      <div class="slab paper">
+        <h3>Neurons &amp; revealed weight</h3>
+        <div class="scroll">
+          <table id="chainTable">
+            <thead><tr><th>uid</th><th>hotkey</th><th>axon</th><th class="n">weight</th></tr></thead>
+            <tbody id="chainBody"><tr><td colspan="4">loading…</td></tr></tbody>
+          </table>
+        </div>
+        <p class="meta" style="margin-top:8px">Weight is the subnet's actual ranking as the chain reports it, not a figure computed here.</p>
+      </div>
+
+      <div class="slab acid" id="verdictSlab" hidden>
+        <p class="eyebrow">Miner reports</p>
+        <h2>What the subnet says</h2>
+        <div class="verdict" id="verdicts" style="margin-top:12px"></div>
+        <p class="meta" style="margin-top:12px;color:#4a4f1f"><b>Not scored.</b> Organic sessions never touch weights — there is no answer key for real traffic.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var STEPS = [];
+  var AWAIT = [];
+  var armKind = null, armStep = null;
+  var i = 0, rec = [], enteredAt = 0, clicks = 0, retries = 0, busy = false;
+
+  var screen = document.getElementById('screen');
+  var pips = document.getElementById('pips');
+  var recBody = document.getElementById('recBody');
+  var armChip = document.getElementById('armChip');
+
+  // Copy-ish of the real flow's shape, enough that a click-through produces
+  // plausible per-step behaviour. The step NAMES must match SWAP_FLOW exactly
+  // or the miners' per-step profiles are meaningless.
+  var COPY = {
+    wallet_connect: ['Connect wallet', 'Connect'],
+    select_pair:    ['Choose a pair', 'USDC → ETH'],
+    input_amount:   ['How much?', 'Use max'],
+    quote_received: ['Quote', 'Accept quote'],
+    token_approve:  ['Approve USDC', 'Approve'],
+    confirm_swap:   ['Confirm swap', 'Confirm'],
+    tx_pending:     ['Submitting', 'Waiting…'],
+    tx_success:     ['Done', 'Finish']
+  };
+
+  function setArm(kind) {
+    armKind = kind;
+    if (!kind) { armStep = null; armChip.textContent = 'armed: none'; armChip.className = 'chip'; return; }
+    // silent_failure only makes sense where the chain is involved.
+    var pool = (kind === 'silent_failure') ? AWAIT : STEPS.slice(0, STEPS.length - 1);
+    armStep = pool[Math.floor(Math.random() * pool.length)];
+    armChip.textContent = 'armed: ' + kind + ' @ ' + armStep;
+    armChip.className = 'chip armed';
+  }
+
+  document.addEventListener('keydown', function (e) {
+    var map = { '0': null, '1': 'stall', '2': 'error_loop', '3': 'rage_click', '4': 'silent_failure' };
+    if (e.key in map) setArm(map[e.key]);
+  });
+
+  function drawPips() {
+    pips.innerHTML = '';
+    STEPS.forEach(function (s, k) {
+      var el = document.createElement('span');
+      el.className = 'pip' + (k < i ? ' done' : k === i ? ' now' : '');
+      el.textContent = s;
+      pips.appendChild(el);
+    });
+  }
+
+  function drawRec() {
+    recBody.innerHTML = rec.map(function (r) {
+      return '<tr><td>' + r.step + '</td><td class="n">' + r.dwell_ms +
+             '</td><td class="n">' + r.retries + '</td><td class="n">' + r.rage_clicks +
+             '</td><td>' + r.ui_state + '</td></tr>';
+    }).join('') || '<tr><td colspan="5">nothing yet</td></tr>';
+  }
+
+  function enter() {
+    enteredAt = Date.now(); clicks = 0; retries = 0; busy = false;
+    drawPips();
+    var step = STEPS[i];
+    var copy = COPY[step] || [step, 'Continue'];
+    screen.innerHTML =
+      '<p class="eyebrow">step ' + (i + 1) + ' / ' + STEPS.length + ' · ' + step + '</p>' +
+      '<div class="big">' + copy[0] + '</div>' +
+      '<div id="slot"></div>' +
+      '<div><button id="go">' + copy[1] + '</button></div>' +
+      '<p class="meta" id="hint"></p>';
+    document.getElementById('go').addEventListener('click', onGo);
+  }
+
+  function finishStep(uiState) {
+    rec.push({
+      step: STEPS[i],
+      dwell_ms: Date.now() - enteredAt,
+      retries: retries,
+      rage_clicks: Math.max(0, clicks - 1),
+      ui_state: uiState || 'ok'
+    });
+    drawRec();
+    i++;
+    if (i >= STEPS.length) { send(); } else { enter(); }
+  }
+
+  function onGo() {
+    clicks++;
+    if (busy) return;                       // extra clicks here are rage clicks
+    var step = STEPS[i];
+    var armedHere = (armKind && armStep === step);
+
+    if (!armedHere) { finishStep('ok'); return; }
+
+    var slot = document.getElementById('slot');
+    var go = document.getElementById('go');
+    var hint = document.getElementById('hint');
+
+    if (armKind === 'stall' || armKind === 'silent_failure') {
+      // A real wait, so the dwell time recorded is genuinely long.
+      busy = true;
+      go.disabled = true;
+      slot.innerHTML = '<div class="big"><span class="spin">◴</span> pending</div>';
+      hint.textContent = 'click anywhere you like — it will not help';
+      var wait = armKind === 'stall' ? 11000 : 21000;
+      setTimeout(function () { busy = false; finishStep('pending'); }, wait);
+      return;
+    }
+
+    if (armKind === 'error_loop') {
+      retries++;
+      if (retries < 4) {
+        slot.innerHTML = '<div class="err">ERR_INSUFFICIENT_ALLOWANCE — try again</div>';
+        hint.textContent = 'attempt ' + retries + ' failed';
+        return;
+      }
+      finishStep('error');
+      return;
+    }
+
+    if (armKind === 'rage_click') {
+      if (clicks < 7) {
+        slot.innerHTML = '<div class="meta">…</div>';
+        hint.textContent = 'nothing appears to be happening';
+        return;
+      }
+      finishStep('ok');
+      return;
+    }
+
+    finishStep('ok');
+  }
+
+  function send() {
+    screen.innerHTML = '<div class="big"><span class="spin">◴</span> asking the subnet…</div>' +
+                       '<p class="meta">relaying this session to every miner over signed HTTP</p>';
+    fetch('/api/ingest', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ events: rec, flow: 'token_swap', arm_kind: armKind, arm_step: armStep })
+    })
+      .then(function (r) { return r.json(); })
+      .then(showVerdicts)
+      .catch(function (e) {
+        screen.innerHTML = '<div class="err">gateway unreachable: ' + e.message + '</div>';
+      });
+  }
+
+  function showVerdicts(data) {
+    var truth = (data.armed_truth || [])[0] || null;
+    var slab = document.getElementById('verdictSlab');
+    var box = document.getElementById('verdicts');
+    slab.hidden = false;
+
+    box.innerHTML = (data.verdicts || []).map(function (v) {
+      var found = (v.findings || []);
+      var hit = truth && found.some(function (f) { return f.index === truth.index; });
+      var text = found.length
+        ? found.map(function (f) {
+            return 'step ' + f.index + ' <b>' + f.kind + '</b> @ ' + Number(f.confidence).toFixed(2);
+          }).join(' · ')
+        : '<i>no friction found</i>';
+      if (!v.reachable) text = '<i>no answer</i>';
+      return '<div class="vrow' + (hit ? ' hit' : '') + '">' +
+             '<span class="who">uid ' + v.uid + '</span>' +
+             '<span style="flex:1;min-width:140px">' + text + '</span>' +
+             '<span class="meta">' + v.latency_ms + ' ms</span></div>';
+    }).join('');
+
+    var head = truth
+      ? '<p class="eyebrow">you armed ' + truth.kind + ' at step ' + truth.index + ' (' + truth.step + ')</p>'
+      : '<p class="eyebrow">nothing was armed — this is just a session</p>';
+    box.insertAdjacentHTML('afterbegin', head);
+
+    screen.innerHTML =
+      '<div class="big">Session sent</div>' +
+      '<p class="meta">' + (data.events || []).length + ' events · id ' +
+      String(data.session_id).slice(0, 8) + '</p>' +
+      '<div><button id="again">Run another</button></div>';
+    document.getElementById('again').addEventListener('click', function () {
+      i = 0; rec = []; drawRec(); slab.hidden = true; setArm(armKind); enter();
+    });
+    loadChain();
+  }
+
+  function loadChain() {
+    fetch('/api/chain').then(function (r) { return r.json(); }).then(function (c) {
+      if (c.error) { document.getElementById('subnetMeta').textContent = 'chain unreadable: ' + c.error; return; }
+      document.getElementById('subnetName').textContent = 'netuid ' + c.netuid + ' · ' + (c.name || 'unnamed');
+      document.getElementById('subnetMeta').textContent = 'block ' + c.block + ' · tempo ' + c.tempo + ' · ' + c.neurons.length + ' neurons';
+      document.getElementById('chainBody').innerHTML = c.neurons.map(function (n) {
+        return '<tr class="' + (n.is_validator ? 'me' : '') + '"><td class="n">' + n.uid + '</td>' +
+               '<td>' + n.hotkey.slice(0, 8) + '…' + (n.is_validator ? ' <b>(validator)</b>' : '') + '</td>' +
+               '<td>' + (n.axon || '—') + '</td>' +
+               '<td class="n">' + (n.weight ? n.weight.toFixed(3) : '—') + '</td></tr>';
+      }).join('');
+    }).catch(function () {
+      document.getElementById('subnetMeta').textContent = 'gateway not answering';
+    });
+  }
+
+  fetch('/api/meta').then(function (r) { return r.json(); }).then(function (m) {
+    STEPS = m.steps; AWAIT = m.await_steps;
+    drawRec(); setArm(null); enter(); loadChain();
+  }).catch(function () {
+    screen.innerHTML = '<div class="err">cannot reach the gateway — is neurons.gateway running?</div>';
+  });
+})();
+</script>
+</body>
+</html>

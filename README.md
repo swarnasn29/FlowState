@@ -348,6 +348,7 @@ Windows outright.
 source ~/venvs/flowstate/bin/activate
 cd /mnt/c/Users/swarn/Documents/FlowStateProject
 
+python -m neurons.gateway   --miner miner=http://127.0.0.1:8091   --miner miner_naive=http://127.0.0.1:8092   # then open http://127.0.0.1:8099
 bash scripts/healthcheck.sh                # 8 code checks - is the code sound?
 python -m scripts.preflight                # chain checks - will a run work NOW?
 python -m scripts.preflight --require-miners   # ...strict: miners must be up

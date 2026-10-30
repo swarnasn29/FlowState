@@ -1,0 +1,77 @@
+{
+  "voice": "Charon",
+  "model": "gemini-2.5-flash-preview-tts",
+  "note": "Delivery direction is prepended to each line when calling the TTS model; it is not spoken. Keep lines short - the renderer times each scene to the clip it gets back.",
+  "scenes": [
+    {
+      "id": "title",
+      "style": "Read like a confident documentary narrator. Crisp, measured, a little urgent.",
+      "text": "FlowState. A Bittensor subnet that finds the exact step where a Web3 user hit friction. Including the failures the interface never reports."
+    },
+    {
+      "id": "invisible",
+      "style": "Slower. Let the contradiction land. Slightly conspiratorial.",
+      "text": "Here is the failure nobody measures. The interface says pending. The chain says confirmed. The transaction settled seconds ago, and the user is still watching a spinner."
+    },
+    {
+      "id": "nolog",
+      "style": "Flat and damning, like stating an obvious injustice.",
+      "text": "No error fired. So nothing was logged. Every analytics tool on the market saw a perfectly healthy session."
+    },
+    {
+      "id": "telemetry",
+      "style": "Matter of fact, technical, confident.",
+      "text": "So we record both halves. What the interface was showing, and what the chain actually did, for the same moment. When those two disagree, the user is staring at a lie."
+    },
+    {
+      "id": "kinds",
+      "style": "Build a rhythm through the list, then land hard on the last one.",
+      "text": "Four friction types. Stall. Error loop. Rage click. Session replay catches those three. Silent failure it structurally cannot. And that is the one that makes people pay gas twice."
+    },
+    {
+      "id": "counts",
+      "style": "Measured, slightly surprising, like revealing a design subtlety.",
+      "text": "And most sessions are fine. Thirty percent carry no friction at all. So a miner has to decide whether anything is wrong, and how many things are. Silence, correctly given, scores full marks."
+    },
+    {
+      "id": "relative",
+      "style": "Sharp and a bit provocative. You are demolishing an obvious assumption.",
+      "text": "Friction is relative, not absolute. A healthy chain confirmation runs to forty five seconds under load. Longer than many real stalls. So flag the slowest step, and you score zero point three seven. Worse than a miner with no history at all."
+    },
+    {
+      "id": "transport",
+      "style": "Brisk, slightly dry, with a hint of the-hard-way pride.",
+      "text": "Bittensor version eleven deleted the entire networking stack. No axon. No dendrite. No synapse. So the transport is ours. Signed HTTP, every request checked against the metagraph before a miner spends a single cycle. Seven authentication cases. All passing."
+    },
+    {
+      "id": "streams",
+      "style": "This is the intellectual core. Slow down. Deliberate.",
+      "text": "Here is the hard part. Real telemetry has no answer key, so you cannot pay for it. So two streams run through the same miners, byte identical on the wire. A synthetic exam with a known answer sets every weight. Real sessions are the product, and are never scored."
+    },
+    {
+      "id": "rubric",
+      "style": "Precise and clipped, like reading out specifications.",
+      "text": "The marking is specific. Localisation, seventy percent. Kind, twenty. Calibration, ten. Is a confident claim actually more often right. Latency is pass or fail. The validator prints this on every run, because a rule miners cannot read is a rule they reverse engineer."
+    },
+    {
+      "id": "skill",
+      "style": "Confident, evidential, building to the floor figure.",
+      "text": "Does the task need skill? The detector that learns each step's own norms scores zero point eight four six. The same code, with no accumulated history, zero point five two four. Every lazy strategy sits below that, and the emission floor is set above all of them."
+    },
+    {
+      "id": "ranking",
+      "style": "Punchy. This is the payoff.",
+      "text": "And it ranks. Two miners, both genuinely trying, differing in exactly one design choice. Fifty nine percent of emissions against forty one. Because weight is the squared excess over the floor, not accuracy itself."
+    },
+    {
+      "id": "onchain",
+      "style": "Firm, factual, no embellishment. You are producing receipts.",
+      "text": "It is not a mock. Subnet six hundred. Created, activated, and named on chain. Weights committed and revealed, readable by anyone, right now."
+    },
+    {
+      "id": "close",
+      "style": "Honest and plain through the limits, then slow right down for the final line.",
+      "text": "What it does not claim. No dApp can send data yet, and emissions are inert on testnet. Every number you just saw is produced by a script in the repository, on every run. FlowState. The failure that costs the most does not look like a failure."
+    }
+  ]
+}

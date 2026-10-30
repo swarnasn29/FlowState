@@ -1,0 +1,113 @@
+﻿{
+    "voice":  "Charon",
+    "preference":  [
+                       "gemini-3.8-flash-tts",
+                       "gemini-2.5-flash-preview-tts",
+                       "gemini-3.8-flash-lite-tts"
+                   ],
+    "generatedAt":  "2026-10-30T14:14:34Z",
+    "totalSeconds":  265.844,
+    "missing":  [
+
+                ],
+    "scenes":  [
+                   {
+                       "id":  "title",
+                       "file":  "audio/gemini-3.8-flash-tts/01-title.wav",
+                       "seconds":  15.406,
+                       "model":  "gemini-3.8-flash-tts",
+                       "text":  "FlowState. A Bittensor subnet that finds the exact step where a Web3 user hit friction. Including the failures the interface never reports."
+                   },
+                   {
+                       "id":  "invisible",
+                       "file":  "audio/gemini-3.8-flash-tts/02-invisible.wav",
+                       "seconds":  19.606,
+                       "model":  "gemini-3.8-flash-tts",
+                       "text":  "Here is the failure nobody measures. The interface says pending. The chain says confirmed. The transaction settled seconds ago, and the user is still watching a spinner."
+                   },
+                   {
+                       "id":  "nolog",
+                       "file":  "audio/gemini-3.8-flash-tts/03-nolog.wav",
+                       "seconds":  12.246,
+                       "model":  "gemini-3.8-flash-tts",
+                       "text":  "No error fired. So nothing was logged. Every analytics tool on the market saw a perfectly healthy session."
+                   },
+                   {
+                       "id":  "telemetry",
+                       "file":  "audio/gemini-3.8-flash-tts/04-telemetry.wav",
+                       "seconds":  13.046,
+                       "model":  "gemini-3.8-flash-tts",
+                       "text":  "So we record both halves. What the interface was showing, and what the chain actually did, for the same moment. When those two disagree, the user is staring at a lie."
+                   },
+                   {
+                       "id":  "kinds",
+                       "file":  "audio/gemini-3.8-flash-tts/05-kinds.wav",
+                       "seconds":  16.886,
+                       "model":  "gemini-3.8-flash-tts",
+                       "text":  "Four friction types. Stall. Error loop. Rage click. Session replay catches those three. Silent failure it structurally cannot. And that is the one that makes people pay gas twice."
+                   },
+                   {
+                       "id":  "counts",
+                       "file":  "audio/gemini-3.8-flash-tts/06-counts.wav",
+                       "seconds":  19.326,
+                       "model":  "gemini-3.8-flash-tts",
+                       "text":  "And most sessions are fine. Thirty percent carry no friction at all. So a miner has to decide whether anything is wrong, and how many things are. Silence, correctly given, scores full marks."
+                   },
+                   {
+                       "id":  "relative",
+                       "file":  "audio/gemini-3.8-flash-tts/07-relative.wav",
+                       "seconds":  21.526,
+                       "model":  "gemini-3.8-flash-tts",
+                       "text":  "Friction is relative, not absolute. A healthy chain confirmation runs to forty five seconds under load. Longer than many real stalls. So flag the slowest step, and you score zero point three seven. Worse than a miner with no history at all."
+                   },
+                   {
+                       "id":  "transport",
+                       "file":  "audio/gemini-3.8-flash-tts/08-transport.wav",
+                       "seconds":  22.646,
+                       "model":  "gemini-3.8-flash-tts",
+                       "text":  "Bittensor version eleven deleted the entire networking stack. No axon. No dendrite. No synapse. So the transport is ours. Signed HTTP, every request checked against the metagraph before a miner spends a single cycle. Seven authentication cases. All passing."
+                   },
+                   {
+                       "id":  "streams",
+                       "file":  "audio/gemini-3.8-flash-lite-tts/09-streams.wav",
+                       "seconds":  23.086,
+                       "model":  "gemini-3.8-flash-lite-tts",
+                       "text":  "Here is the hard part. Real telemetry has no answer key, so you cannot pay for it. So two streams run through the same miners, byte identical on the wire. A synthetic exam with a known answer sets every weight. Real sessions are the product, and are never scored."
+                   },
+                   {
+                       "id":  "rubric",
+                       "file":  "audio/gemini-3.8-flash-lite-tts/10-rubric.wav",
+                       "seconds":  24.046,
+                       "model":  "gemini-3.8-flash-lite-tts",
+                       "text":  "The marking is specific. Localisation, seventy percent. Kind, twenty. Calibration, ten. Is a confident claim actually more often right. Latency is pass or fail. The validator prints this on every run, because a rule miners cannot read is a rule they reverse engineer."
+                   },
+                   {
+                       "id":  "skill",
+                       "file":  "audio/gemini-3.8-flash-tts/11-skill.wav",
+                       "seconds":  21.166,
+                       "model":  "gemini-3.8-flash-tts",
+                       "text":  "Does the task need skill? The detector that learns each step\u0027s own norms scores zero point eight four six. The same code, with no accumulated history, zero point five two four. Every lazy strategy sits below that, and the emission floor is set above all of them."
+                   },
+                   {
+                       "id":  "ranking",
+                       "file":  "audio/gemini-3.8-flash-tts/12-ranking.wav",
+                       "seconds":  20.606,
+                       "model":  "gemini-3.8-flash-tts",
+                       "text":  "And it ranks. Two miners, both genuinely trying, differing in exactly one design choice. Fifty nine percent of emissions against forty one. Because weight is the squared excess over the floor, not accuracy itself."
+                   },
+                   {
+                       "id":  "onchain",
+                       "file":  "audio/gemini-3.8-flash-lite-tts/13-onchain.wav",
+                       "seconds":  15.286,
+                       "model":  "gemini-3.8-flash-lite-tts",
+                       "text":  "It is not a mock. Subnet six hundred. Created, activated, and named on chain. Weights committed and revealed, readable by anyone, right now."
+                   },
+                   {
+                       "id":  "close",
+                       "file":  "audio/gemini-3.8-flash-lite-tts/14-close.wav",
+                       "seconds":  20.966,
+                       "model":  "gemini-3.8-flash-lite-tts",
+                       "text":  "What it does not claim. No dApp can send data yet, and emissions are inert on testnet. Every number you just saw is produced by a script in the repository, on every run. FlowState. The failure that costs the most does not look like a failure."
+                   }
+               ]
+}
